@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  /* These variables automatically create bg-gradient-radial and bg-gradient-conic utilities */
   --background-image-gradient-radial: radial-gradient(var(--tw-gradient-stops));
   --background-image-gradient-conic: conic-gradient(
     from 180deg at 50% 50%,
@@ -8,7 +9,7 @@
   );
 }
 
-/* Custom Utilities for Glassmorphism and Gradients */
+/* Custom Utilities */
 @layer utilities {
   .glass-card {
     @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
