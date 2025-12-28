@@ -9,26 +9,23 @@ export async function POST(req: NextRequest) {
 
     await dbConnect();
 
-    // The structure depends on how Ultravox sends the tool call.
-    // Assuming the tool call arguments are in a specific format based on user description.
-    // "Extract the tool_calls or transcript arguments (Name, Crop, Amount)."
-    // Typical tool call payload might have `toolCalls` array.
+    // Safety check for tool calls as requested
+    if (!body.data || !body.data[0]?.toolCalls) {
+      return NextResponse.json({ message: "No tools called" }, { status: 200 });
+    }
 
     let farmerName, cropType, loanAmount;
 
-    // Check for tool calls (standard structure)
-    // Note: This parsing logic depends on the exact JSON structure from Ultravox.
-    // Based on "Save the farmer's loan request to the central database" tool definition.
-    if (body.toolCalls && body.toolCalls.length > 0) {
-      const toolCall = body.toolCalls.find(
+    // Extract from the structure verified by the safety check
+    const toolCalls = body.data[0].toolCalls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      const toolCall = toolCalls.find(
         (tc: any) => tc.name === "save_loan_application"
       );
       if (toolCall) {
         ({ farmerName, cropType, loanAmount } = toolCall.arguments);
       }
-    } else if (body.parameters) {
-      // Fallback if the structure is flattened
-      ({ farmerName, cropType, loanAmount } = body.parameters);
     }
 
     // If we don't have the data yet, we might check other fields or just rely on what we found.

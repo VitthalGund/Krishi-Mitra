@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { Mic, Phone, X } from "lucide-react";
 import { UltravoxSession, UltravoxSessionStatus } from "ultravox-client";
 
-// Placeholder - Replace with actual Join URL from Ultravox
-const JOIN_URL = "YOUR_ULTRAVOX_JOIN_URL_HERE";
+// Placeholder JOIN_URL removed - using dynamic session API
 
 export default function Home() {
   const [session, setSession] = useState<UltravoxSession | null>(null);
@@ -24,12 +23,25 @@ export default function Home() {
   }, [session]);
 
   const startCall = async () => {
-    if (!JOIN_URL || JOIN_URL === "YOUR_ULTRAVOX_JOIN_URL_HERE") {
-      setError("Please configure the JOIN_URL in app/page.tsx");
-      return;
-    }
-
     try {
+      setStatus(UltravoxSessionStatus.CONNECTING);
+
+      // Fetch the join URL from our secure backend API
+      const response = await fetch("/api/ultravox/session", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create call session");
+      }
+
+      const data = await response.json();
+      const joinUrl = data.joinUrl;
+
+      if (!joinUrl) {
+        throw new Error("No join URL received");
+      }
+
       const newSession = new UltravoxSession();
       setSession(newSession);
 
@@ -44,10 +56,11 @@ export default function Home() {
       });
 
       // Join the call
-      await newSession.joinCall(JOIN_URL);
+      await newSession.joinCall(joinUrl);
     } catch (err) {
       console.error("Failed to start call:", err);
-      setError("Failed to connect to the agent.");
+      setError("Failed to connect to the agent. " + (err as Error).message);
+      setStatus(UltravoxSessionStatus.DISCONNECTED);
     }
   };
 
