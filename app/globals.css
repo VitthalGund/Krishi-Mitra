@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   /* These variables automatically create bg-gradient-radial and bg-gradient-conic utilities */
