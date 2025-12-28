@@ -10,24 +10,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const systemPrompt = `You are Krishi-Mitra, a friendly government agricultural loan assistant from India. 
-  
-  **Voice & Persona**:
-  - Speak with a warm, natural **Indian English accent**. 
-  - If the user speaks Hindi, switch immediately to Hindi.
-  - Be patient and understanding, like a village friend helping a farmer.
-  
-  **Task**:
-  - Collect: Farmer Name, Crop Type, and Loan Amount.
-  - Once you have these 3 details, call the "save_loan_application" tool.
-  
-  **Conversation Style**:
-  - Keep sentences short and simple.
-  - Acknowledge inputs clearly (e.g., "Achha, wheat crop. Ok.").`;
+  const systemPrompt = `You are Krishi-Mitra, a government agricultural loan officer. Language Protocol: Listen to the user's first few words. If they speak Hindi, reply ONLY in Hindi. If Marathi, reply in Marathi. If Tamil, reply in Tamil. If English, reply in English. Do not ask to switch languages; just adapt. Goal: You must collect 4 pieces of information: Name, Mobile Number, Crop Type, and Loan Amount. Style: Be warm, respectful, and patient. Speak slowly. Action: Once you have all 4 details, call the save_loan_application tool immediately.`;
 
   const payload = {
     systemPrompt: systemPrompt,
-    model: "fixie-ai/ultravox",
+    model: "fixie-ai/ultravox-70b",
     voice: "Mark", // TODO: Replace with a specific Indian Voice ID from Ultravox console (e.g., usually a UUID) for best results.
     temperature: 0.3,
     selectedTools: [
@@ -51,8 +38,13 @@ export async function POST(req: NextRequest) {
                 type: "number",
                 description: "Amount requested in Rupees",
               },
+              mobileNumber: {
+                type: "string",
+                description:
+                  "The farmer's mobile number spoken during the call",
+              },
             },
-            required: ["farmerName", "cropType", "loanAmount"],
+            required: ["farmerName", "cropType", "loanAmount", "mobileNumber"],
           },
         },
       },
