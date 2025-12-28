@@ -3,16 +3,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sprout } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function Register() {
   const router = useRouter();
+  const { t, language, setLanguage } = useLanguage();
   const [formData, setFormData] = useState({
     name: "",
     mobileNumber: "",
-    language: "Hindi",
+    language: "hi", // Default to Hindi as per user context
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    // Update global language context if user changes it here
+    if (e.target.name === "language") {
+      setLanguage(e.target.value as "en" | "hi" | "mr");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,107 +38,109 @@ export default function Register() {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) {
-        throw new Error("Registration failed");
-      }
-
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Registration failed");
+      }
 
       localStorage.setItem("krishi_user_mobile", data.user.mobileNumber);
       localStorage.setItem("krishi_user_name", data.user.name);
 
+      // Ensure global language matches preference
+      setLanguage(formData.language as "en" | "hi" | "mr");
+
       router.push("/");
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 pt-24">
+    <div className="min-h-screen bg-emerald-950 flex flex-col items-center justify-center p-4 pt-24 font-sans relative overflow-hidden">
       {/* Background Decor */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[20%] -right-[10%] w-[600px] h-[600px] rounded-full bg-emerald-100/50 blur-3xl"></div>
-        <div className="absolute bottom-[20%] -left-[10%] w-[500px] h-[500px] rounded-full bg-teal-100/50 blur-3xl"></div>
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-[10%] -right-[10%] w-[600px] h-[600px] rounded-full bg-emerald-800/20 blur-3xl"></div>
+        <div className="absolute bottom-[10%] -left-[10%] w-[500px] h-[500px] rounded-full bg-teal-800/20 blur-3xl"></div>
       </div>
 
-      <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-full max-w-md border border-white/50 relative z-10">
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-emerald-600 p-4 rounded-2xl shadow-lg shadow-emerald-500/20 mb-6">
-            <Sprout className="w-8 h-8 text-white" />
+      <div className="bg-white/5 backdrop-blur-xl p-8 rounded-3xl shadow-2xl w-full max-w-md border border-white/10 relative z-10">
+        <div className="text-center mb-8">
+          <div className="inline-block bg-emerald-800/50 p-3 rounded-2xl mb-4 border border-emerald-700/50">
+            <Sprout className="w-8 h-8 text-yellow-400" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Create Account
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {t.registerTitle}
           </h1>
-          <p className="text-slate-500 text-center">
-            Join thousands of farmers already using Krishi Mitra for instant
-            loans.
-          </p>
+          <p className="text-emerald-200/70 text-sm">{t.registerSubtitle}</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm flex items-center gap-2 border border-red-100">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+          <div className="mb-6 p-3 bg-red-900/30 border border-red-500/30 text-red-200 text-sm rounded-lg text-center font-medium">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Name Input */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Full Name
+            <label className="block text-sm font-medium text-emerald-200/80 mb-1.5 ml-1">
+              {t.formName}
             </label>
             <input
               type="text"
+              name="name"
               required
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-400 font-medium"
-              placeholder="e.g. Ramesh Kumar"
               value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
+              onChange={handleChange}
+              className="w-full px-5 py-3.5 rounded-xl bg-emerald-900/30 border border-emerald-800 text-white placeholder-emerald-700 focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50 transition-all font-medium"
+              placeholder="e.g. Ram Lal"
             />
           </div>
 
+          {/* Mobile Input */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Mobile Number
+            <label className="block text-sm font-medium text-emerald-200/80 mb-1.5 ml-1">
+              {t.formMobile}
             </label>
             <input
               type="tel"
+              name="mobileNumber"
               required
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-400 font-medium"
-              placeholder="e.g. 9876543210"
               value={formData.mobileNumber}
-              onChange={(e) =>
-                setFormData({ ...formData, mobileNumber: e.target.value })
-              }
+              onChange={handleChange}
+              className="w-full px-5 py-3.5 rounded-xl bg-emerald-900/30 border border-emerald-800 text-white placeholder-emerald-700 focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50 transition-all font-medium"
+              placeholder="e.g. 9876543210"
             />
           </div>
 
+          {/* Language Select */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Preferred Language
+            <label className="block text-sm font-medium text-emerald-200/80 mb-1.5 ml-1">
+              {t.formLang}
             </label>
             <div className="relative">
               <select
-                className="w-full px-4 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all appearance-none font-medium text-slate-700"
+                name="language"
                 value={formData.language}
-                onChange={(e) =>
-                  setFormData({ ...formData, language: e.target.value })
-                }
+                onChange={handleChange}
+                className="w-full px-5 py-3.5 rounded-xl bg-emerald-900/30 border border-emerald-800 text-white focus:outline-none focus:border-yellow-500/50 focus:ring-1 focus:ring-yellow-500/50 transition-all appearance-none font-medium cursor-pointer"
               >
-                <option value="Hindi">Hindi (हिंदी)</option>
-                <option value="Marathi">Marathi (मराठी)</option>
-                <option value="Tamil">Tamil (தமிழ்)</option>
-                <option value="Telugu">Telugu (తెలుగు)</option>
-                <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
-                <option value="English">English</option>
+                <option value="en" className="bg-emerald-900 text-white">
+                  English
+                </option>
+                <option value="hi" className="bg-emerald-900 text-white">
+                  Hindi (हिंदी)
+                </option>
+                <option value="mr" className="bg-emerald-900 text-white">
+                  Marathi (मराठी)
+                </option>
               </select>
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-400">
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-500">
                 <svg
-                  className="w-4 h-4"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -145,19 +159,16 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-xl shadow-emerald-500/20 transform transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+            className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-emerald-950 font-bold py-4 rounded-xl shadow-lg shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5 mt-4"
           >
-            {loading ? "Creating Account..." : "Get Started"}
+            {loading ? "Creating Account..." : t.formSubmit}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-slate-500">
-          Already have an account?{" "}
-          <a
-            href="#"
-            className="text-emerald-600 font-semibold hover:underline"
-          >
-            Log in
+        <p className="mt-8 text-center text-sm text-emerald-400/60">
+          Already registered?{" "}
+          <a href="/login" className="text-yellow-400 hover:underline">
+            Login here
           </a>
         </p>
       </div>

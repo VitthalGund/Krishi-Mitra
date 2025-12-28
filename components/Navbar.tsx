@@ -3,18 +3,17 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Sprout, Menu, X, User, LogOut } from "lucide-react";
+import { Sprout, Menu, X, User, LogOut, Globe } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function Navbar() {
   const router = useRouter();
+  const { t, language, setLanguage } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   useEffect(() => {
-    // effective way to update state based on localStorage changes if they happen in other tabs/windows
-    // or just on mount. For same-page updates, we might need a custom event or context,
-    // but for simple navigation flow this useEffect on mount is usually enough.
-    // To grab updates after login/register immediately, those pages redirect, triggering a mount here.
     const name = localStorage.getItem("krishi_user_name");
     setUserName(name);
   }, []);
@@ -24,20 +23,20 @@ export default function Navbar() {
     localStorage.removeItem("krishi_user_name");
     setUserName(null);
     router.push("/");
-    router.refresh(); // Refresh to update server components if any
+    router.refresh();
   };
 
   return (
-    <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm">
+    <nav className="fixed w-full z-50 bg-emerald-900/90 backdrop-blur-md border-b border-emerald-800 shadow-xl transition-all duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+        <div className="flex justify-between h-20">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="bg-emerald-600 p-2 rounded-lg">
-                <Sprout className="w-6 h-6 text-white" />
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="bg-emerald-800 p-2.5 rounded-xl border border-emerald-700 shadow-lg group-hover:scale-105 transition-transform duration-300">
+                <Sprout className="w-6 h-6 text-yellow-400" />
               </div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-600">
-                Krishi Mitra
+              <span className="text-2xl font-bold text-white tracking-wide">
+                Krishi-Mitra
               </span>
             </Link>
           </div>
@@ -46,38 +45,75 @@ export default function Navbar() {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/"
-              className="text-slate-600 hover:text-emerald-600 font-medium transition-colors"
+              className="text-emerald-100/80 hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
             >
-              Home
+              {t.navHome}
             </Link>
             <Link
               href="/about"
-              className="text-slate-600 hover:text-emerald-600 font-medium transition-colors"
+              className="text-emerald-100/80 hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
             >
-              About
+              {t.navAbout}
             </Link>
             <Link
               href="/guide"
-              className="text-slate-600 hover:text-emerald-600 font-medium transition-colors"
+              className="text-emerald-100/80 hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
             >
-              How It Works
-            </Link>
-            <Link
-              href="/contact"
-              className="text-slate-600 hover:text-emerald-600 font-medium transition-colors"
-            >
-              Contact
+              {t.navGuide}
             </Link>
 
+            {/* Language Switcher */}
+            <div className="relative">
+              <button
+                onClick={() => setLangMenuOpen(!langMenuOpen)}
+                className="flex items-center gap-2 text-emerald-100 hover:text-white bg-emerald-800/50 px-3 py-1.5 rounded-full border border-emerald-700 hover:border-emerald-500 transition-all text-sm font-medium"
+              >
+                <Globe className="w-4 h-4" />
+                <span className="uppercase">{language}</span>
+              </button>
+
+              {langMenuOpen && (
+                <div className="absolute top-full mt-2 right-0 w-32 bg-emerald-900 border border-emerald-700 rounded-xl shadow-xl overflow-hidden py-1">
+                  <button
+                    onClick={() => {
+                      setLanguage("en");
+                      setLangMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400 text-sm"
+                  >
+                    English
+                  </button>
+                  <button
+                    onClick={() => {
+                      setLanguage("hi");
+                      setLangMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400 text-sm"
+                  >
+                    Hindi (हिंदी)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setLanguage("mr");
+                      setLangMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400 text-sm"
+                  >
+                    Marathi (मराठी)
+                  </button>
+                </div>
+              )}
+            </div>
+
             {userName ? (
-              <div className="flex items-center gap-4 pl-4 border-l border-slate-200">
-                <div className="flex items-center gap-2 text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-full">
+              <div className="flex items-center gap-4 pl-4 border-l border-emerald-800">
+                <div className="flex items-center gap-2 text-yellow-400 font-medium bg-emerald-950/50 px-3 py-1.5 rounded-full border border-emerald-800">
                   <User className="w-4 h-4" />
                   <span>{userName.split(" ")[0]}</span>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                  className="p-2 text-emerald-400 hover:text-red-400 transition-colors"
                   title="Logout"
                 >
                   <LogOut className="w-5 h-5" />
@@ -87,30 +123,42 @@ export default function Navbar() {
               <div className="flex items-center gap-4">
                 <Link
                   href="/login"
-                  className="text-emerald-600 font-semibold hover:text-emerald-700"
+                  className="text-emerald-100 font-medium hover:text-white transition-colors text-sm"
                 >
-                  Login
+                  {t.navLogin}
                 </Link>
                 <Link
                   href="/register"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-full font-medium transition-all shadow-lg hover:shadow-emerald-500/30"
+                  className="bg-yellow-500 hover:bg-yellow-400 text-emerald-900 px-6 py-2 rounded-full font-bold transition-all shadow-lg hover:shadow-yellow-500/20 text-sm transform hover:-translate-y-0.5"
                 >
-                  Register
+                  {t.navRegister}
                 </Link>
               </div>
             )}
           </div>
 
           {/* Mobile hamburger */}
-          <div className="md:hidden flex items-center">
+          <div className="md:hidden flex items-center gap-4">
+            {/* Mobile Lang Switch */}
+            <button
+              onClick={() => {
+                const next =
+                  language === "en" ? "hi" : language === "hi" ? "mr" : "en";
+                setLanguage(next);
+              }}
+              className="text-emerald-100 font-bold text-sm bg-emerald-800 px-2 py-1 rounded-md"
+            >
+              {language.toUpperCase()}
+            </button>
+
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="text-slate-600 hover:text-emerald-600 p-2"
+              className="text-emerald-100 hover:text-white p-2"
             >
               {isOpen ? (
-                <X className="w-6 h-6" />
+                <X className="w-7 h-7" />
               ) : (
-                <Menu className="w-6 h-6" />
+                <Menu className="w-7 h-7" />
               )}
             </button>
           </div>
@@ -119,45 +167,45 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="md:hidden bg-white border-t border-slate-100">
-          <div className="px-4 pt-2 pb-6 space-y-2">
+        <div className="md:hidden bg-emerald-900 border-t border-emerald-800">
+          <div className="px-4 pt-4 pb-8 space-y-3">
             <Link
               href="/"
               onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-emerald-600 hover:bg-emerald-50"
+              className="block px-3 py-2 rounded-lg text-base font-medium text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400"
             >
-              Home
+              {t.navHome}
             </Link>
             <Link
               href="/about"
               onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-emerald-600 hover:bg-emerald-50"
+              className="block px-3 py-2 rounded-lg text-base font-medium text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400"
             >
-              About
+              {t.navAbout}
             </Link>
             <Link
               href="/guide"
               onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-emerald-600 hover:bg-emerald-50"
+              className="block px-3 py-2 rounded-lg text-base font-medium text-emerald-100 hover:bg-emerald-800 hover:text-yellow-400"
             >
-              How It Works
+              {t.navGuide}
             </Link>
 
-            <div className="border-t border-slate-100 my-2 pt-2">
+            <div className="border-t border-emerald-800 my-4 pt-4">
               {userName ? (
                 <>
-                  <div className="px-3 py-2 flex items-center gap-2 text-emerald-700 font-medium">
+                  <div className="px-3 py-2 flex items-center gap-2 text-yellow-400 font-medium">
                     <User className="w-5 h-5" />
-                    Welcome, {userName}
+                    {t.welcome}, {userName}
                   </div>
                   <button
                     onClick={() => {
                       handleLogout();
                       setIsOpen(false);
                     }}
-                    className="w-full text-left px-3 py-2 text-red-500 font-medium hover:bg-red-50 rounded-md"
+                    className="w-full text-left px-3 py-2 text-red-400 font-medium hover:bg-emerald-800 rounded-lg"
                   >
-                    Logout
+                    {t.navLogout}
                   </button>
                 </>
               ) : (
@@ -165,16 +213,16 @@ export default function Navbar() {
                   <Link
                     href="/login"
                     onClick={() => setIsOpen(false)}
-                    className="flex justify-center items-center py-2.5 border border-emerald-600 text-emerald-600 font-semibold rounded-xl"
+                    className="flex justify-center items-center py-3 border border-emerald-700 text-emerald-100 font-semibold rounded-xl hover:bg-emerald-800"
                   >
-                    Login
+                    {t.navLogin}
                   </Link>
                   <Link
                     href="/register"
                     onClick={() => setIsOpen(false)}
-                    className="flex justify-center items-center py-2.5 bg-emerald-600 text-white font-semibold rounded-xl shadow-md"
+                    className="flex justify-center items-center py-3 bg-yellow-500 text-emerald-950 font-bold rounded-xl shadow-md hover:bg-yellow-400"
                   >
-                    Register
+                    {t.navRegister}
                   </Link>
                 </div>
               )}
