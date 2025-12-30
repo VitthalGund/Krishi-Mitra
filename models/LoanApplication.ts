@@ -1,32 +1,33 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface ILoanApplication extends Document {
-  farmerId: string;
-  loanType: "KCC" | "Tractor" | "Dairy";
-  status: "Pending" | "Verified" | "Approved" | "Rejected";
-  details: Record<string, any>;
-  aiSummary?: string;
-  documents?: string[];
+  userId: mongoose.Schema.Types.ObjectId;
+  type: "KCC" | "Mechanization" | "Dairy";
+  status: "Draft" | "Submitted" | "Approved" | "Rejected";
+  details: Record<string, any>; // Mixed: { surveyNo... } or { equipment... }
+  documents: string[]; // URLs
+  aiAnalysis?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const LoanApplicationSchema: Schema<ILoanApplication> = new Schema(
   {
-    farmerId: { type: String, required: true },
-    loanType: {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    type: {
       type: String,
-      enum: ["KCC", "Tractor", "Dairy"],
+      enum: ["KCC", "Mechanization", "Dairy"],
       required: true,
     },
     status: {
       type: String,
-      enum: ["Pending", "Verified", "Approved", "Rejected"],
-      default: "Pending",
+      enum: ["Draft", "Submitted", "Approved", "Rejected"],
+      default: "Draft",
     },
+    // Critical: Mixed type for unstructured data like { surveyNo, crop } OR { animalType, count }
     details: { type: Schema.Types.Mixed, default: {} },
-    aiSummary: { type: String },
     documents: [{ type: String }],
+    aiAnalysis: { type: String },
   },
   {
     timestamps: true,

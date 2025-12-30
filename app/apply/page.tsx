@@ -14,9 +14,30 @@ import {
   Loader2,
   CheckCircle,
   X,
+  FileText,
 } from "lucide-react";
+import { submitLoanApplication } from "../actions";
 
-type LoanType = "KCC" | "Tractor" | "Dairy";
+type LoanType = "KCC" | "Mechanization" | "Dairy";
+
+interface LoanFormData {
+  surveyNo?: string;
+  crop?: string;
+  acreage?: string;
+  equipment?: string;
+  dealer?: string;
+  price?: string;
+  animalCount?: string;
+  animalType?: string;
+  village?: string;
+  cropSeason?: string;
+  dealerName?: string;
+  equipmentType?: string;
+  quotationAmount?: string;
+  loanAmount?: string;
+  shedArea?: string;
+  milkYield?: string;
+}
 
 export default function ApplyPage() {
   const [loanType, setLoanType] = useState<LoanType>("KCC");
@@ -31,7 +52,26 @@ export default function ApplyPage() {
     setValue,
     watch,
     formState: { errors },
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      surveyNo: "",
+      crop: "",
+      acreage: "",
+      equipment: "",
+      dealer: "",
+      price: "",
+      animalCount: "",
+      animalType: "Cow",
+      village: "",
+      cropSeason: "Kharif",
+      dealerName: "",
+      equipmentType: "Tractor",
+      quotationAmount: "",
+      loanAmount: "",
+      shedArea: "",
+      milkYield: "",
+    },
+  });
 
   // AI Chat Hook
   const {
@@ -39,78 +79,56 @@ export default function ApplyPage() {
     input,
     handleInputChange,
     handleSubmit: handleChatSubmit,
-    setMessages,
     isLoading,
+    addToolResult,
   } = useChat({
     api: "/api/chat",
-    onToolCall: async (toolCall: any) => {
-      // Vercel AI SDK (native) might handle tools differently depending on version.
-      // If the backend streams tool calls properly, this callback or the message stream will identify it.
-      // However, for GoogleGenerativeAIStream, function calls often come as text chunks or specific functionCall blocks.
-      // We'll implement a fallback check in `useEffect` on messages to be safe.
-      if (toolCall.name === "fill_form") {
-        const args = JSON.parse(toolCall.arguments as string);
-        console.log("Auto-filling form:", args);
-        Object.keys(args).forEach((key) => {
-          setValue(key, args[key]);
-          if (
-            key === "loanType" &&
-            ["KCC", "Tractor", "Dairy"].includes(args[key])
-          ) {
-            setLoanType(args[key]);
-          }
-        });
-        return "Form updated successfully.";
+    maxSteps: 5,
+    onToolCall: async ({ toolCall }) => {
+      if (toolCall.toolName === "update_form") {
+        const args = toolCall.args as any;
+        console.log("AI Updating Form:", args);
+
+        // Update form fields
+        if (args.surveyNo) setValue("surveyNo", args.surveyNo);
+        if (args.crop) setValue("crop", args.crop);
+        if (args.acreage) setValue("acreage", args.acreage);
+        if (args.equipment) setValue("equipment", args.equipment);
+        if (args.dealer) setValue("dealer", args.dealer);
+        if (args.price) setValue("price", args.price);
+        if (args.animalCount) setValue("animalCount", args.animalCount);
+
+        return "Form updated on screen.";
       }
     },
   });
 
-  // Watch for Tool Calls in Messages (Fallback)
+  // Scroll to bottom of chat
   useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.role === "assistant" && lastMsg.toolInvocations) {
-      lastMsg.toolInvocations.forEach((tool) => {
-        if (tool.toolName === "fill_form" && tool.args) {
-          const args = tool.args;
-          Object.keys(args).forEach((key) => {
-            // @ts-ignore
-            setValue(key, args[key]);
-            // @ts-ignore
-            if (
-              key === "loanType" &&
-              ["KCC", "Tractor", "Dairy"].includes(args[key])
-            ) {
-              // @ts-ignore
-              setLoanType(args[key]);
-            }
-          });
-        }
-      });
-    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, setValue]);
+  }, [messages]);
 
-  const onSubmit = (data: any) => {
-    console.log("Form Submitted:", data);
-    alert("Application Submitted! Status: Pending Verification.");
+  const onSubmit = async (data: any) => {
+    console.log("Submitting:", data);
+    try {
+      const result = await submitLoanApplication({ ...data, loanType });
+      if (result.success) {
+        alert("Application Submitted! ID: " + result.id);
+      } else {
+        alert("Submission Failed: " + result.error);
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
   };
 
-  const verifyLand = async () => {
+  const verifyLand = () => {
     setVerifying(true);
-    // Mock AgriStack API
+    // Mock AgriStack
     setTimeout(() => {
-      setValue("ownerName", "Vitthal Gund");
-      setValue("landArea", "3.5 Acres");
-      setValue("riskStatus", "Low");
+      setValue("acreage", "3.5");
+      alert("AgriStack Verified: Owner Vitthal Gund");
       setVerifying(false);
-      // Trigger a system message in chat
-      const sysMsg = {
-        id: Date.now().toString(),
-        role: "system",
-        content: "AgriStack Verified: Land 3.5 Acres, Owner Vitthal Gund.",
-      };
-      // We can't easily inject system messages into useChat state directly without using setMessages spread
-      // But visually we can show a toast or just let the form update speak for itself.
     }, 2000);
   };
 
@@ -118,34 +136,40 @@ export default function ApplyPage() {
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* LEFT PANE: Application Form */}
       <div
-        className={`flex-1 overflow-y-auto transition-all ${
-          isSidebarOpen ? "mr-96" : ""
+        className={`flex-1 overflow-y-auto transition-all duration-300 ${
+          isSidebarOpen ? "mr-[400px]" : "mr-0"
         }`}
       >
-        <div className="max-w-4xl mx-auto p-8 pt-24">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">
-            New Loan Application
-          </h1>
-          <p className="text-slate-500 mb-8">
-            Krishi-Sahayak Portal • Certified by NABARD
-          </p>
+        <div className="max-w-4xl mx-auto p-8 pt-10">
+          <header className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+              New Loan Application
+            </h1>
+            <p className="text-slate-500 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600" />
+              Krishi-Sahayak Portal • Certified by NABARD
+            </p>
+          </header>
 
-          {/* Loan Selector */}
+          {/* Loan Selector Tabs */}
           <div className="grid grid-cols-3 gap-4 mb-8">
-            {(["KCC", "Tractor", "Dairy"] as LoanType[]).map((type) => (
+            {[
+              { id: "KCC", label: "Crop Loan", icon: Sprout },
+              { id: "Mechanization", label: "Tractor Loan", icon: Tractor },
+              { id: "Dairy", label: "Dairy Loan", icon: Milk },
+            ].map((type) => (
               <button
-                key={type}
-                onClick={() => setLoanType(type)}
+                key={type.id}
+                type="button"
+                onClick={() => setLoanType(type.id as LoanType)}
                 className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${
-                  loanType === type
+                  loanType === type.id
                     ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm ring-1 ring-emerald-500"
                     : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                {type === "KCC" && <Sprout className="w-6 h-6" />}
-                {type === "Tractor" && <Tractor className="w-6 h-6" />}
-                {type === "Dairy" && <Milk className="w-6 h-6" />}
-                <span className="font-semibold">{type} Loan</span>
+                <type.icon className="w-6 h-6" />
+                <span className="font-semibold">{type.label}</span>
               </button>
             ))}
           </div>
@@ -159,113 +183,109 @@ export default function ApplyPage() {
             {loanType === "KCC" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-1 md:col-span-2">
+                    <h3 className="text-lg font-semibold text-slate-800 border-b pb-2 mb-4">
+                      Land Details
+                    </h3>
+                  </div>
+
+                  {/* Survey Number Verification */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Survey / Gat Number
                     </label>
                     <div className="flex gap-2">
                       <input
-                        {...register("surveyNumber")}
+                        {...register("surveyNo")}
                         className="flex-1 p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                         placeholder="e.g. 102/2A"
                       />
                       <button
                         type="button"
                         onClick={verifyLand}
-                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
                         disabled={verifying}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-70"
                       >
                         {verifying ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          "Verify"
+                          "Verify Land"
                         )}
                       </button>
                     </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Verifies against AgriStack DB
+                    </p>
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Village & Taluka
+                      Village Name
                     </label>
                     <input
                       {...register("village")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="Village, Taluka"
+                      placeholder="Enter Village"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Total Land Area
+                      Total Land Area (Acres)
                     </label>
                     <input
-                      {...register("landArea")}
+                      {...register("acreage")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none bg-slate-50"
                       placeholder="Auto-filled after verification"
+                      readOnly
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Crop Season
+                      Crop Name
                     </label>
-                    <select
-                      {...register("cropSeason")}
+                    <input
+                      {...register("crop")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      <option value="Kharif">Kharif (Monsoon)</option>
-                      <option value="Rabi">Rabi (Winter)</option>
-                    </select>
+                      placeholder="e.g. Sugarcane"
+                    />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Tractor Fields */}
-            {loanType === "Tractor" && (
+            {/* Mechanization (Tractor) Fields */}
+            {loanType === "Mechanization" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Equipment Name
+                    </label>
+                    <input
+                      {...register("equipment")}
+                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      placeholder="e.g. John Deere 5310"
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Dealer Name
                     </label>
                     <input
-                      {...register("dealerName")}
+                      {...register("dealer")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="Authorized Dealer Name"
+                      placeholder="Authorized Dealer"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Equipment Type
-                    </label>
-                    <select
-                      {...register("equipmentType")}
-                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      <option value="Tractor">Tractor</option>
-                      <option value="Power Tiller">Power Tiller</option>
-                      <option value="Drone">Agri-Drone</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Quotation Amount (₹)
+                      Quotation Price (₹)
                     </label>
                     <input
-                      {...register("quotationAmount")}
-                      type="number"
+                      {...register("price")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Loan Amount Requested (₹)
-                    </label>
-                    <input
-                      {...register("loanAmount")}
-                      type="number"
-                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="0.00"
+                      placeholder="8,50,000"
                     />
                   </div>
                 </div>
@@ -284,8 +304,8 @@ export default function ApplyPage() {
                       {...register("animalType")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                     >
-                      <option value="Cow">Cow (Crossbred)</option>
-                      <option value="Buffalo">Buffalo (Murrah)</option>
+                      <option>Cow</option>
+                      <option>Buffalo</option>
                     </select>
                   </div>
                   <div>
@@ -294,41 +314,18 @@ export default function ApplyPage() {
                     </label>
                     <input
                       {...register("animalCount")}
-                      type="number"
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="e.g. 2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Shed Area (Sq. ft)
-                    </label>
-                    <input
-                      {...register("shedArea")}
-                      type="number"
-                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="e.g. 500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Daily Milk Yield (Liters)
-                    </label>
-                    <input
-                      {...register("milkYield")}
-                      type="number"
-                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="e.g. 20"
+                      placeholder="e.g. 5"
                     />
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
+            <div className="pt-6 border-t border-slate-100 flex justify-end">
               <button
                 type="submit"
-                className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all"
+                className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
               >
                 Submit Application
               </button>
@@ -339,7 +336,7 @@ export default function ApplyPage() {
 
       {/* RIGHT PANE: AI Co-pilot */}
       <div
-        className={`fixed inset-y-0 right-0 w-96 bg-white border-l border-slate-200 shadow-2xl transform transition-transform duration-300 flex flex-col z-50 ${
+        className={`fixed inset-y-0 right-0 w-[400px] bg-white border-l border-slate-200 shadow-2xl transform transition-transform duration-300 flex flex-col z-50 ${
           isSidebarOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -356,15 +353,17 @@ export default function ApplyPage() {
         {/* Header */}
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
-              <Bot className="w-6 h-6 text-emerald-600" />
+            <div className="relative">
+              <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
+                <Bot className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-white"></div>
             </div>
             <div>
-              <h3 className="font-bold text-slate-800">Sahayak AI</h3>
-              <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                Online • Gemini/Ollama
-              </span>
+              <h3 className="font-bold text-slate-800">Krishi-Sahayak</h3>
+              <p className="text-xs text-slate-500">
+                AI Co-pilot • Multi-Engine
+              </p>
             </div>
           </div>
           <button
@@ -378,29 +377,34 @@ export default function ApplyPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
           {messages.length === 0 && (
-            <div className="text-center mt-10 opacity-60">
-              <p className="text-sm text-slate-500">Ask me anything like:</p>
-              <div className="mt-4 space-y-2">
-                <span
-                  className="block text-xs bg-white border border-slate-200 p-2 rounded-lg cursor-pointer hover:border-emerald-400"
+            <div className="mt-10 p-6 bg-white rounded-xl border border-slate-200 text-center">
+              <h4 className="font-semibold text-slate-700 mb-2">Welcome!</h4>
+              <p className="text-sm text-slate-500 mb-4">
+                I can help you fill the form. Try saying:
+              </p>
+              <div className="space-y-2">
+                <button
                   onClick={() =>
                     handleInputChange({
-                      target: { value: "I want a tractor loan" },
+                      target: { value: "I want a tractor loan for John Deere" },
                     } as any)
                   }
+                  className="w-full text-left text-xs bg-emerald-50 text-emerald-700 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
                 >
-                  "I want a tractor loan"
-                </span>
-                <span
-                  className="block text-xs bg-white border border-slate-200 p-2 rounded-lg cursor-pointer hover:border-emerald-400"
+                  "I want a tractor loan..."
+                </button>
+                <button
                   onClick={() =>
                     handleInputChange({
-                      target: { value: "My land is 2 acres in Pune" },
+                      target: {
+                        value: "My survey number is 105/2, crop is Sugarcane",
+                      },
                     } as any)
                   }
+                  className="w-full text-left text-xs bg-emerald-50 text-emerald-700 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
                 >
-                  "My land is 2 acres in Pune"
-                </span>
+                  "My survey number is 105/2..."
+                </button>
               </div>
             </div>
           )}
@@ -419,10 +423,37 @@ export default function ApplyPage() {
                     : "bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm"
                 }`}
               >
+                {/* Render Text Content */}
                 {m.content}
+
+                {/* Render Tool Invocations (Visual Feedback) */}
+                {m.toolInvocations?.map((toolInvocation) => {
+                  const toolCallId = toolInvocation.toolCallId;
+                  const addResult = (result: string) =>
+                    addToolResult({ toolCallId, result });
+
+                  // Just showing a small indicator that a tool was utilized
+                  return (
+                    <div
+                      key={toolCallId}
+                      className="mt-2 text-xs bg-slate-100 p-2 rounded border border-slate-200"
+                    >
+                      <span className="font-semibold text-slate-500">
+                        🛠️ Tool: {toolInvocation.toolName}
+                      </span>
+                      {/* We don't need to manually invoke here as we handle state in onToolCall */}
+                      {"result" in toolInvocation && (
+                        <div className="text-emerald-600 mt-1">
+                          Done: {JSON.stringify(toolInvocation.result)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
+
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm">
@@ -438,7 +469,8 @@ export default function ApplyPage() {
           <form onSubmit={handleChatSubmit} className="flex gap-2">
             <button
               type="button"
-              className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"
+              className="p-2 text-slate-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-emerald-50"
+              title="Upload Document"
             >
               <Paperclip className="w-5 h-5" />
             </button>

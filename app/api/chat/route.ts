@@ -1,55 +1,57 @@
-import { google } from "@ai-sdk/google";
-import { createOllama } from "ollama-ai-provider";
-import { streamText, tool } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamText, convertToCoreMessages, tool } from "ai";
 import { z } from "zod";
 
 export const runtime = "edge";
 
-const SYSTEM_PROMPT = `You are an expert Indian Agri-Loan Officer.
-1. Co-pilot: If the user says 'I want a tractor loan', guide them to select 'Tractor' and ask for the Dealer Name.
-2. Form Filling: If the user provides details (e.g., 'My land is 2 acres'), call the 'fill_form' tool immediately with the fields you extracted.
-3. Tech Support: If they ask 'What is 7/12?', explain it is a land ownership document.
-4. Language: Always answer in the language the user is speaking, or English if unsure.
-`;
+// --- Dual Engine Configuration ---
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+});
 
-const tools = {
-  fill_form: tool({
-    description: "Autofill the loan application form with extracted details",
-    parameters: z.object({
-      loanType: z.enum(["KCC", "Tractor", "Dairy"]).optional(),
-      surveyNumber: z.string().optional(),
-      landArea: z.string().optional(),
-      cropName: z.string().optional(),
-      dealerName: z.string().optional(),
-      quotationAmount: z.string().optional(),
-      animalType: z.string().optional(),
-      animalCount: z.string().optional(),
-    }),
-  }),
-};
+const ollama = createOpenAI({
+  baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1",
+  apiKey: "ollama",
+});
+
+const SYSTEM_PROMPT = `You are Krishi-Sahayak. Help the farmer fill the loan form.
+1. If they mention a crop or land area, call 'update_form'.
+2. If they upload an image (7/12 extract), analyze it and extract the Name and Survey Number.
+3. Keep answers short and simple (Hinglish allowed).`;
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
-  const provider = process.env.LLM_PROVIDER || "gemini";
+  const provider = process.env.LLM_PROVIDER || "ollama"; // Default to Ollama
 
+  // Select Model Engine
   let model;
-
   if (provider === "ollama") {
-    const ollama = createOllama({
-      baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-    });
     model = ollama(process.env.OLLAMA_MODEL || "llama3");
   } else {
     model = google("gemini-1.5-flash");
   }
 
   try {
-    const result = streamText({
+    const result = await streamText({
       model,
-      messages,
+      messages: convertToCoreMessages(messages),
       system: SYSTEM_PROMPT,
-      tools,
-      maxSteps: 5,
+      tools: {
+        update_form: tool({
+          description:
+            "Updates the loan application form fields based on user input.",
+          parameters: z.object({
+            surveyNo: z.string().optional(),
+            crop: z.string().optional(),
+            acreage: z.string().optional(),
+            equipment: z.string().optional(),
+            dealer: z.string().optional(),
+            price: z.string().optional(),
+            animalCount: z.string().optional(),
+          }),
+        }),
+      },
     });
 
     return result.toDataStreamResponse();
