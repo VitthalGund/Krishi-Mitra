@@ -1,30 +1,32 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface ILoanApplication extends Document {
-  farmerName?: string;
-  mobileNumber: string;
-  cropType?: string;
-  loanAmount?: number;
+  farmerId: string;
+  loanType: "KCC" | "Tractor" | "Dairy";
   status: "Pending" | "Verified" | "Approved" | "Rejected";
-  riskScore: number;
-  voiceCallId?: string;
+  details: Record<string, any>;
+  aiSummary?: string;
+  documents?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 const LoanApplicationSchema: Schema<ILoanApplication> = new Schema(
   {
-    farmerName: { type: String },
-    mobileNumber: { type: String, required: true },
-    cropType: { type: String },
-    loanAmount: { type: Number },
+    farmerId: { type: String, required: true },
+    loanType: {
+      type: String,
+      enum: ["KCC", "Tractor", "Dairy"],
+      required: true,
+    },
     status: {
       type: String,
       enum: ["Pending", "Verified", "Approved", "Rejected"],
       default: "Pending",
     },
-    riskScore: { type: Number, default: 0 },
-    voiceCallId: { type: String },
+    details: { type: Schema.Types.Mixed, default: {} },
+    aiSummary: { type: String },
+    documents: [{ type: String }],
   },
   {
     timestamps: true,
