@@ -31,8 +31,8 @@ export async function POST(req: Request) {
       userId: user._id.toString(),
       mobileNumber: user.mobileNumber,
     };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
+    const accessToken = await signAccessToken(payload);
+    const refreshToken = await signRefreshToken(payload);
 
     // Set Refresh Token in HttpOnly Cookie
     const cookieSerialized = serialize("refreshToken", refreshToken, {

@@ -20,10 +20,13 @@ import {
   Loader2,
   CheckCircle,
   X,
+  Save,
+  ArrowRight,
 } from "lucide-react";
-import { submitLoanApplication } from "../actions";
+import { submitApplication, saveDraft } from "../actions";
+import { useRouter } from "next/navigation";
 
-type LoanType = "KCC" | "Mechanization" | "Dairy";
+type LoanType = "KCC" | "Mechanization" | "Dairy" | null;
 
 // Field Highlighting Component
 const HighlightField = ({
@@ -35,7 +38,7 @@ const HighlightField = ({
 }) => {
   return (
     <div
-      className={`transition-colors duration-500 ease-in-out rounded-lg ${
+      className={`transition-colors duration-500 ease-in-out rounded-lg p-1 -m-1 ${
         highlighted ? "ring-2 ring-yellow-400 bg-yellow-50" : ""
       }`}
     >
@@ -45,11 +48,13 @@ const HighlightField = ({
 };
 
 export default function ApplyPage() {
-  const [loanType, setLoanType] = useState<LoanType>("KCC");
+  const [loanType, setLoanType] = useState<LoanType>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [highlightedFields, setHighlightedFields] = useState<string[]>([]);
+  const router = useRouter();
 
   // Vision / Image Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,18 +75,12 @@ export default function ApplyPage() {
     setValue,
     watch,
     reset,
-    formState: { errors },
+    getValues, // Needed for Drafts
+    formState: { errors, isValid },
   } = useForm<LoanFormData>({
-    resolver: zodResolver(currentSchema),
-    defaultValues: {
-      loanType: "KCC", // Default
-    },
+    resolver: loanType ? zodResolver(currentSchema) : undefined,
+    mode: "onChange",
   });
-
-  // Reset form when loan type changes (optional, but good for clean slate)
-  useEffect(() => {
-    reset({ loanType: loanType as any });
-  }, [loanType, reset]);
 
   // AI Chat Hook
   const {
@@ -90,7 +89,6 @@ export default function ApplyPage() {
     handleInputChange,
     handleSubmit: handleChatSubmit,
     isLoading,
-    addToolResult,
   } = useChat({
     api: "/api/chat",
     maxSteps: 5,
@@ -100,11 +98,9 @@ export default function ApplyPage() {
         console.log("AI Updating Form:", args);
 
         const newHighlights: string[] = [];
-
-        // Helper to update and highlight
         const updateField = (key: keyof LoanFormData, value: any) => {
           if (value) {
-            setValue(key, value);
+            setValue(key, value, { shouldValidate: true });
             newHighlights.push(key);
           }
         };
@@ -120,9 +116,9 @@ export default function ApplyPage() {
           ["KCC", "Mechanization", "Dairy"].includes(args.loanType)
         ) {
           if (loanType !== args.loanType) {
+            // If we are in Selection State, this auto-selects.
+            // If we are in Form State, it switches tabs.
             setLoanType(args.loanType);
-            // Note: Changing loan type might reset form due to useEffect above.
-            // In a perfect world we'd merge values. For now, we let it switch.
           }
         }
 
@@ -133,13 +129,12 @@ export default function ApplyPage() {
         updateField("cropSeason", args.cropSeason);
         updateField("equipment", args.equipment);
         updateField("dealer", args.dealer);
-        updateField("price", args.price); // Map price -> quotationAmount logic if needed
+        updateField("price", args.price);
         updateField("animalCount", args.animalCount);
         updateField("animalType", args.animalType);
 
-        // Trigger Highlight Effect
         setHighlightedFields(newHighlights);
-        setTimeout(() => setHighlightedFields([]), 2000); // Remove after 2s
+        setTimeout(() => setHighlightedFields([]), 2000);
 
         return "Form updated successfully.";
       }
@@ -157,44 +152,54 @@ export default function ApplyPage() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setAttachment(base64);
+      setAttachment(event.target?.result as string);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
+  const handleCustomChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() && !attachment) return;
-
     const files = fileInputRef.current?.files;
-
     handleChatSubmit(e, {
       experimental_attachments: files ? files : undefined,
     });
-
     setAttachment(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // --- ACTIONS ---
+
+  const onSaveDraft = async () => {
+    setIsSaving(true);
+    const data = getValues(); // Get raw values, valid or not
+    const result = await saveDraft({ ...data, loanType });
+    setIsSaving(false);
+
+    if (result.success) {
+      alert("Draft Saved! Expected to resume later.");
+    } else {
+      alert("Failed to save draft: " + result.error);
+    }
+  };
+
   const onSubmit = async (data: LoanFormData) => {
-    console.log("Submitting:", data);
-    try {
-      const result = await submitLoanApplication(data);
-      if (result.success) {
-        alert("Application Submitted! ID: " + result.id);
-      } else {
-        alert("Submission Failed: " + result.error);
-      }
-    } catch (err: any) {
-      alert("Error: " + err.message);
+    setIsSaving(true);
+    const result = await submitApplication({ ...data, loanType }); // Re-validates on server
+    setIsSaving(false);
+
+    if (result.success) {
+      alert("Application Submitted Successfully! ID: " + result.id);
+      router.push("/dashboard");
+    } else {
+      alert("Submission Failed: " + result.error);
     }
   };
 
   const verifyLand = () => {
     setVerifying(true);
     setTimeout(() => {
-      setValue("acreage", 3.5); // Use number for Zod coercion or string if schema allows
+      setValue("acreage", 3.5);
       alert("AgriStack Verified: Owner Vitthal Gund");
       setVerifying(false);
       setHighlightedFields((prev) => [...prev, "acreage"]);
@@ -202,6 +207,70 @@ export default function ApplyPage() {
     }, 2000);
   };
 
+  // --- RENDER: STEP 1 (Selection) ---
+  if (!loanType) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-8 flex flex-col items-center justify-center font-sans">
+        <h1 className="text-4xl font-bold text-slate-800 mb-2">
+          Choose Your Loan
+        </h1>
+        <p className="text-slate-600 mb-10 max-w-lg text-center">
+          Select the type of agricultural financing you need. Our AI Assistant
+          will help you complete the application.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full">
+          {[
+            {
+              id: "KCC",
+              label: "Kisan Credit Card",
+              desc: "For seeds, fertilizers, and crop expenses.",
+              icon: Sprout,
+              color: "text-green-600",
+              bg: "bg-green-50",
+            },
+            {
+              id: "Mechanization",
+              label: "Farm Mechanization",
+              desc: "Tractors, harvesters, and equipment.",
+              icon: Tractor,
+              color: "text-blue-600",
+              bg: "bg-blue-50",
+            },
+            {
+              id: "Dairy",
+              label: "Dairy & Livestock",
+              desc: "Cattle purchase and shed construction.",
+              icon: Milk,
+              color: "text-amber-600",
+              bg: "bg-amber-50",
+            },
+          ].map((type: any) => (
+            <button
+              key={type.id}
+              onClick={() => setLoanType(type.id)}
+              className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-xl transition-all border border-slate-200 text-left group"
+            >
+              <div
+                className={`w-14 h-14 ${type.bg} ${type.color} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}
+              >
+                <type.icon className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">
+                {type.label}
+              </h3>
+              <p className="text-slate-500 mb-6">{type.desc}</p>
+              <div className="flex items-center font-semibold text-emerald-600 gap-2">
+                Apply Now <ArrowRight className="w-4 h-4" />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER: STEP 2 (Form + Chat) ---
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* LEFT PANE: Application Form */}
@@ -210,44 +279,38 @@ export default function ApplyPage() {
           isSidebarOpen ? "mr-[400px]" : "mr-0"
         }`}
       >
-        <div className="max-w-4xl mx-auto p-8 pt-10">
-          <header className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              New Loan Application
-            </h1>
-            <p className="text-slate-500 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
-              Krishi-Sahayak Portal • Certified by NABARD
-            </p>
+        <div className="max-w-4xl mx-auto p-8 pt-10 pb-32">
+          <header className="mb-8 flex justify-between items-center">
+            <div>
+              <button
+                onClick={() => setLoanType(null)}
+                className="text-sm text-slate-500 hover:text-emerald-600 mb-1"
+              >
+                ← Back to Selection
+              </button>
+              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+                {loanType === "KCC" && (
+                  <Sprout className="w-8 h-8 text-emerald-600" />
+                )}
+                {loanType === "Mechanization" && (
+                  <Tractor className="w-8 h-8 text-blue-600" />
+                )}
+                {loanType === "Dairy" && (
+                  <Milk className="w-8 h-8 text-amber-600" />
+                )}
+                {loanType === "KCC"
+                  ? "Crop Loan"
+                  : loanType === "Mechanization"
+                  ? "Tractor Loan"
+                  : "Dairy Loan"}{" "}
+                Application
+              </h1>
+            </div>
           </header>
 
-          {/* Loan Selector Tabs */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            {[
-              { id: "KCC", label: "Crop Loan", icon: Sprout },
-              { id: "Mechanization", label: "Tractor Loan", icon: Tractor },
-              { id: "Dairy", label: "Dairy Loan", icon: Milk },
-            ].map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                onClick={() => setLoanType(type.id as LoanType)}
-                className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${
-                  loanType === type.id
-                    ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm ring-1 ring-emerald-500"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <type.icon className="w-6 h-6" />
-                <span className="font-semibold">{type.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Dynamic Form */}
           <form
             onSubmit={handleSubmit(onSubmit)}
-            className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6"
+            className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6 relative"
           >
             {/* Common Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
@@ -277,6 +340,7 @@ export default function ApplyPage() {
                 </label>
                 <input
                   {...register("mobile")}
+                  type="tel"
                   className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                   placeholder="9876543210"
                 />
@@ -310,12 +374,6 @@ export default function ApplyPage() {
             {loanType === "KCC" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="col-span-1 md:col-span-2">
-                    <h3 className="text-lg font-semibold text-slate-800 border-b pb-2 mb-4">
-                      Land Details
-                    </h3>
-                  </div>
-
                   <HighlightField
                     highlighted={highlightedFields.includes("surveyNo")}
                   >
@@ -384,7 +442,6 @@ export default function ApplyPage() {
                       </p>
                     )}
                   </HighlightField>
-
                   <HighlightField
                     highlighted={highlightedFields.includes("cropSeason")}
                   >
@@ -404,7 +461,7 @@ export default function ApplyPage() {
               </div>
             )}
 
-            {/* Mechanization (Tractor) Fields */}
+            {/* Mechanization */}
             {loanType === "Mechanization" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -425,7 +482,6 @@ export default function ApplyPage() {
                       </p>
                     )}
                   </HighlightField>
-
                   <HighlightField
                     highlighted={highlightedFields.includes("dealer")}
                   >
@@ -443,7 +499,6 @@ export default function ApplyPage() {
                       </p>
                     )}
                   </HighlightField>
-
                   <HighlightField
                     highlighted={highlightedFields.includes("price")}
                   >
@@ -465,7 +520,7 @@ export default function ApplyPage() {
               </div>
             )}
 
-            {/* Dairy Fields */}
+            {/* Dairy */}
             {loanType === "Dairy" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -483,7 +538,6 @@ export default function ApplyPage() {
                       <option>Buffalo</option>
                     </select>
                   </HighlightField>
-
                   <HighlightField
                     highlighted={highlightedFields.includes("animalCount")}
                   >
@@ -505,11 +559,32 @@ export default function ApplyPage() {
               </div>
             )}
 
-            <div className="pt-6 border-t border-slate-100 flex justify-end">
+            {/* ACTION FOOTER */}
+            <div className="pt-8 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white p-4 -mx-4 -mb-4 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={onSaveDraft}
+                disabled={isSaving}
+                className="bg-white border-2 border-slate-200 text-slate-600 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Save Draft
+              </button>
+
               <button
                 type="submit"
+                disabled={isSaving}
                 className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
               >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
                 Submit Application
               </button>
             </div>
@@ -523,7 +598,6 @@ export default function ApplyPage() {
           isSidebarOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        {/* Toggle Button */}
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
@@ -532,23 +606,10 @@ export default function ApplyPage() {
             <Bot className="w-6 h-6" />
           </button>
         )}
-
-        {/* Header */}
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
-                <Bot className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-white"></div>
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800">Krishi-Sahayak</h3>
-              <p className="text-xs text-slate-500">
-                AI Co-pilot • Multi-Engine
-              </p>
-            </div>
-          </div>
+          <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <Bot className="w-5 h-5 text-emerald-600" /> Krishi-Sahayak
+          </h3>
           <button
             onClick={() => setIsSidebarOpen(false)}
             className="text-slate-400 hover:text-slate-600"
@@ -557,17 +618,15 @@ export default function ApplyPage() {
           </button>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
           {messages.length === 0 && (
             <div className="mt-10 p-6 bg-white rounded-xl border border-slate-200 text-center">
-              <h4 className="font-semibold text-slate-700 mb-2">Welcome!</h4>
-              <p className="text-sm text-slate-500 mb-4">
-                I can help you fill the form.
+              <p className="text-sm text-slate-500">
+                I can help you fill the form. Attach a photo of 7/12 or just
+                speak.
               </p>
             </div>
           )}
-
           {messages.map((m) => (
             <div
               key={m.id}
@@ -578,45 +637,31 @@ export default function ApplyPage() {
               <div
                 className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                   m.role === "user"
-                    ? "bg-emerald-600 text-white rounded-tr-none"
-                    : "bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white border text-slate-700"
                 }`}
               >
                 {m.content}
-                {/* Attachments */}
-                {m.experimental_attachments &&
-                  m.experimental_attachments.length > 0 && (
-                    <div className="mt-2 text-xs">
-                      {m.experimental_attachments.map((att: any, idx: number) =>
-                        att.contentType?.startsWith("image/") ? (
-                          <img
-                            key={idx}
-                            src={att.url}
-                            alt="attachment"
-                            className="max-w-full rounded mt-1"
-                          />
-                        ) : (
-                          <span key={idx}>[Attachment]</span>
-                        )
-                      )}
-                    </div>
-                  )}
+                {m.experimental_attachments?.map(
+                  (a: any, i: number) =>
+                    a.contentType?.startsWith("image") && (
+                      <img
+                        key={i}
+                        src={a.url}
+                        className="mt-2 rounded max-w-full"
+                      />
+                    )
+                )}
               </div>
             </div>
           ))}
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm">
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-              </div>
-            </div>
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-600 m-4" />
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
         <div className="p-4 border-t border-slate-200 bg-white">
-          {/* Hidden File Input */}
           <input
             type="file"
             ref={fileInputRef}
@@ -624,32 +669,25 @@ export default function ApplyPage() {
             accept="image/*"
             onChange={handleFileChange}
           />
-
-          {/* Preview */}
           {attachment && (
-            <div className="mb-2 relative inline-block">
+            <div className="mb-2 relative inline-flex">
               <img
                 src={attachment}
-                alt="Preview"
-                className="h-12 w-12 rounded object-cover border border-slate-200"
+                className="h-12 w-12 rounded object-cover border"
               />
               <button
-                onClick={() => {
-                  setAttachment(null);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
+                onClick={() => setAttachment(null)}
                 className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"
               >
                 <X className="w-3 h-3" />
               </button>
             </div>
           )}
-
-          <form onSubmit={handleCustomSubmit} className="flex gap-2">
+          <form onSubmit={handleCustomChatSubmit} className="flex gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-slate-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-emerald-50"
+              className="p-2 text-slate-400 hover:text-emerald-600"
             >
               <Paperclip className="w-5 h-5" />
             </button>
@@ -657,11 +695,12 @@ export default function ApplyPage() {
               value={input}
               onChange={handleInputChange}
               placeholder="Type or speak..."
-              className="flex-1 bg-slate-100 border border-transparent focus:bg-white focus:border-emerald-500 rounded-full px-4 py-2 text-sm outline-none transition-all"
+              className="flex-1 bg-slate-100 rounded-full px-4 outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <button
               type="submit"
-              className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 shadow-md"
+              className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700"
+              disabled={isLoading}
             >
               <Send className="w-4 h-4" />
             </button>

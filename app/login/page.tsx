@@ -2,8 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sprout, Lock } from "lucide-react";
+import { Sprout, Lock, AlertCircle } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { z } from "zod";
+
+// Simple validation schema
+const loginSchema = z.object({
+  mobileNumber: z
+    .string()
+    .regex(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
+});
 
 export default function Login() {
   const router = useRouter();
@@ -11,34 +19,53 @@ export default function Login() {
   const [mobileNumber, setMobileNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setValidationError("");
+
+    // 1. Validation
+    const result = loginSchema.safeParse({ mobileNumber });
+    if (!result.success) {
+      setValidationError(result.error.errors[0].message);
+      setLoading(false);
+      return;
+    }
 
     try {
-      // Reuse register endpoint for demo login check
-      const res = await fetch("/api/auth/register", {
+      // 2. Auth API Call
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Returning User",
           mobileNumber,
         }),
       });
 
       const data = await res.json();
 
-      if (data.user) {
-        localStorage.setItem("krishi_user_mobile", data.user.mobileNumber);
+      if (res.ok && data.accessToken) {
+        // 3. Success
+        // Store user details for UI (Navbar)
+        localStorage.setItem("krishi_user_mobile", data.user.mobile);
         localStorage.setItem("krishi_user_name", data.user.name);
-        router.push("/");
+
+        // Redirect
+        const params = new URLSearchParams(window.location.search);
+        const redirectUrl = params.get("from") || "/dashboard"; // Redirect to dashboard by default
+        router.push(redirectUrl);
+        // Force refresh to update Navbar state immediately
+        router.refresh();
       } else {
-        setError("Login failed. Please register.");
+        setError(
+          data.message || "Login failed. Please check your credentials."
+        );
       }
     } catch (err) {
-      setError("Connection failed.");
+      setError("Connection failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -52,39 +79,52 @@ export default function Login() {
             <Lock className="w-6 h-6 text-emerald-600 dark:text-yellow-400" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-            {t.loginTitle}
+            {t.loginTitle || "Welcome Back"}
           </h1>
           <p className="text-slate-500 dark:text-emerald-200/70">
-            {t.loginSubtitle}
+            {t.loginSubtitle || "Enter your mobile number to continue"}
           </p>
         </div>
 
         {error && (
-          <div className="text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/30 p-3 rounded-lg text-center mb-4 text-sm">
-            {error}
+          <div className="flex items-center gap-2 text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900/30 p-3 rounded-lg text-center mb-4 text-sm">
+            <AlertCircle className="w-4 h-4" /> {error}
           </div>
         )}
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-slate-700 dark:text-emerald-200/80 mb-2">
-              {t.formMobile}
+              {t.formMobile || "Mobile Number"}
             </label>
             <input
               type="tel"
               required
               value={mobileNumber}
               onChange={(e) => setMobileNumber(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-50 dark:bg-emerald-900/30 border border-slate-200 dark:border-emerald-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+              className={`w-full px-4 py-3.5 rounded-xl bg-slate-50 dark:bg-emerald-900/30 border text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${
+                validationError
+                  ? "border-red-500 focus:ring-red-500"
+                  : "border-slate-200 dark:border-emerald-800"
+              }`}
               placeholder="e.g. 9876543210"
+              pattern="[0-9]{10}"
+              minLength={10}
+              maxLength={10}
+              title="Please enter exactly 10 digits"
             />
+            {validationError && (
+              <p className="text-xs text-red-500 mt-1 ml-1">
+                {validationError}
+              </p>
+            )}
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 dark:bg-yellow-500 dark:hover:bg-yellow-400 text-white dark:text-emerald-950 font-bold py-4 rounded-xl shadow-lg transition-all"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 dark:bg-yellow-500 dark:hover:bg-yellow-400 text-white dark:text-emerald-950 font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2"
           >
-            {loading ? "Verifying..." : t.formLoginSubmit}
+            {loading ? "Verifying..." : t.formLoginSubmit || "Login"}
           </button>
         </form>
 
@@ -94,7 +134,7 @@ export default function Login() {
             href="/register"
             className="text-emerald-600 dark:text-yellow-400 font-semibold hover:underline"
           >
-            {t.navRegister}
+            {t.navRegister || "Register"}
           </a>
         </p>
       </div>

@@ -1,43 +1,46 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyAccessToken } from "./lib/auth";
+import { verifyAccessToken, verifyRefreshToken } from "./lib/auth";
 
-// Routes that require authentication
 const PROTECTED_ROUTES = ["/dashboard", "/apply"];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Check if the route is protected
   const isProtectedRoute = PROTECTED_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
 
   if (isProtectedRoute) {
-    // 1. Check for Access Token in Headers (Bearer ...)
+    // Check Authorization Header
     const authHeader = req.headers.get("authorization");
-    const accessToken = authHeader?.split(" ")[1];
+    let accessToken = authHeader?.split(" ")[1];
 
-    if (accessToken) {
-      // We can't fully verify with 'jsonwebtoken' in Edge Runtime (Middleware)
-      // because 'crypto' module is limited. However, 'jose' is recommended for Edge.
-      // For this demo, we might check presence or simple decode if we switch lib.
-      // BUT, since we used 'jsonwebtoken' which relies on Node crypto, it might fail in Middleware on Vercel.
-      // Standard workaround: Check for Refresh Token cookie presence as a "Session" indicator
-      // OR use 'jose' library for Edge-compatible generic JWT verification.
-      // For simplicity/robustness in this specific setup without changing all deps to 'jose':
-      // We will check for the Refresh Token cookie. If it exists, we assume user matches
-      // and let the client-side/Server Actions handle standard verification where Node runtime is available.
-      // The absolute security check happens in Server Actions or API routes.
-      // Middleware here acts as a "Gatekeeper" to redirect unauthenticated users to Login.
+    // Check Cookie if header missing (fallback for browser nav)
+    if (!accessToken) {
+      // Note: For strict API usage we might rely only on headers,
+      // but for app nav using cookies is convenient if we set one for access too.
+      // However, we predominantly rely on Refresh Token cookie for session persistence.
+      // Let's check for refresh token to imply session.
     }
 
-    const refreshToken = req.cookies.get("refreshToken");
+    // Since we are validating in middleware, we need to be careful.
+    // Real validation happens with the refresh token cookie mainly for session presence.
+    const refreshToken = req.cookies.get("refreshToken")?.value;
 
     if (!refreshToken) {
-      // Redirect to Login if no session
       const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("from", pathname); // Redirect back after login
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    try {
+      await verifyRefreshToken(refreshToken);
+      // Valid session
+    } catch (err) {
+      // Invalid session
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("from", pathname);
       return NextResponse.redirect(loginUrl);
     }
   }

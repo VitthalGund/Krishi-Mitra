@@ -1,259 +1,187 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Sprout, Menu, X, User, LogOut, Globe, Sun, Moon } from "lucide-react";
-import { useLanguage } from "@/context/LanguageContext";
+import { User, Sun, Moon, Menu, X, LogOut } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Navbar() {
-  const router = useRouter();
-  const { t, language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const [isOpen, setIsOpen] = useState(false);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    const name = localStorage.getItem("krishi_user_name");
-    setUserName(name);
+    // Check if user is logged in via localStorage (set by Login page)
+    const user = localStorage.getItem("krishi_user_mobile");
+    setIsLoggedIn(!!user);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Call API to clear cookies
+    await fetch("/api/auth/logout", { method: "POST" });
+    // Clear local state
     localStorage.removeItem("krishi_user_mobile");
     localStorage.removeItem("krishi_user_name");
-    setUserName(null);
-    router.push("/");
-    router.refresh();
+    setIsLoggedIn(false);
+    router.push("/login");
   };
 
   return (
-    <nav className="fixed w-full z-50 bg-white/90 dark:bg-emerald-900/90 backdrop-blur-md border-b border-slate-200 dark:border-emerald-800 shadow-xl transition-all duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-20">
-          <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="bg-emerald-600 dark:bg-emerald-800 p-2.5 rounded-xl border border-emerald-500 dark:border-emerald-700 shadow-lg group-hover:scale-105 transition-transform duration-300">
-                <Sprout className="w-6 h-6 text-white dark:text-yellow-400" />
-              </div>
-              <span className="text-2xl font-bold text-slate-800 dark:text-white tracking-wide">
-                Krishi-Mitra
-              </span>
-            </Link>
+    <nav className="border-b border-slate-200 dark:border-white/10 bg-white/80 dark:bg-emerald-950/80 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 bg-emerald-600 dark:bg-yellow-500 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110">
+            <span className="text-white dark:text-emerald-900 font-bold">
+              K
+            </span>
           </div>
+          <span className="text-xl font-bold bg-linear-to-r from-emerald-600 to-green-500 dark:from-yellow-400 dark:to-yellow-200 bg-clip-text text-transparent">
+            Krishi-Mitra
+          </span>
+        </Link>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:flex items-center space-x-6">
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-8">
+          <Link
+            href="/"
+            className="text-sm font-medium text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 transition-colors"
+          >
+            Home
+          </Link>
+          <Link
+            href="/about"
+            className="text-sm font-medium text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 transition-colors"
+          >
+            About
+          </Link>
+          {!isLoggedIn && (
             <Link
-              href="/"
-              className="text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
+              href="/register"
+              className="text-sm font-medium text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 transition-colors"
             >
-              {t.navHome}
+              Register
             </Link>
-            <Link
-              href="/about"
-              className="text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
-            >
-              {t.navAbout}
-            </Link>
-            <Link
-              href="/guide"
-              className="text-slate-600 dark:text-emerald-100/80 hover:text-emerald-600 dark:hover:text-yellow-400 font-medium transition-colors tracking-wide text-sm"
-            >
-              {t.navGuide}
-            </Link>
+          )}
 
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className="p-2 text-slate-500 dark:text-emerald-200 hover:bg-slate-100 dark:hover:bg-emerald-800 rounded-full transition-colors"
-            >
-              {theme === "dark" ? (
-                <Sun className="w-5 h-5 text-yellow-400" />
-              ) : (
-                <Moon className="w-5 h-5 text-indigo-600" />
-              )}
-            </button>
+          <div className="w-px h-6 bg-slate-200 dark:bg-white/10" />
 
-            {/* Language Switcher */}
-            <div className="relative">
-              <button
-                onClick={() => setLangMenuOpen(!langMenuOpen)}
-                className="flex items-center gap-2 text-slate-700 dark:text-emerald-100 hover:text-emerald-600 dark:hover:text-white bg-slate-100 dark:bg-emerald-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-emerald-700 hover:border-emerald-500 transition-all text-sm font-medium"
-              >
-                <Globe className="w-4 h-4" />
-                <span className="uppercase">{language}</span>
-              </button>
-
-              {langMenuOpen && (
-                <div className="absolute top-full mt-2 right-0 w-32 bg-white dark:bg-emerald-900 border border-slate-200 dark:border-emerald-700 rounded-xl shadow-xl overflow-hidden py-1">
-                  <button
-                    onClick={() => {
-                      setLanguage("en");
-                      setLangMenuOpen(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 text-slate-700 dark:text-emerald-100 hover:bg-slate-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400 text-sm"
-                  >
-                    English
-                  </button>
-                  <button
-                    onClick={() => {
-                      setLanguage("hi");
-                      setLangMenuOpen(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 text-slate-700 dark:text-emerald-100 hover:bg-slate-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400 text-sm"
-                  >
-                    Hindi (हिंदी)
-                  </button>
-                  <button
-                    onClick={() => {
-                      setLanguage("mr");
-                      setLangMenuOpen(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 text-slate-700 dark:text-emerald-100 hover:bg-slate-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400 text-sm"
-                  >
-                    Marathi (मराठी)
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {userName ? (
-              <div className="flex items-center gap-4 pl-4 border-l border-slate-200 dark:border-emerald-800">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-yellow-400 font-medium bg-emerald-50 dark:bg-emerald-950/50 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                  <User className="w-4 h-4" />
-                  <span>{userName.split(" ")[0]}</span>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="p-2 text-slate-400 dark:text-emerald-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </div>
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-yellow-400 transition-colors"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-5 h-5" />
             ) : (
-              <div className="flex items-center gap-4">
-                <Link
-                  href="/login"
-                  className="text-slate-600 dark:text-emerald-100 font-medium hover:text-emerald-600 dark:hover:text-white transition-colors text-sm"
-                >
-                  {t.navLogin}
-                </Link>
-                <Link
-                  href="/register"
-                  className="bg-emerald-600 dark:bg-yellow-500 hover:bg-emerald-700 dark:hover:bg-yellow-400 text-white dark:text-emerald-950 px-6 py-2 rounded-full font-bold transition-all shadow-lg hover:shadow-emerald-500/20 dark:hover:shadow-yellow-500/20 text-sm transform hover:-translate-y-0.5"
-                >
-                  {t.navRegister}
-                </Link>
-              </div>
+              <Moon className="w-5 h-5" />
             )}
-          </div>
+          </button>
 
-          {/* Mobile hamburger */}
-          <div className="md:hidden flex items-center gap-4">
-            {/* Theme Toggle Mobile */}
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 text-slate-500 dark:text-emerald-200 rounded-full"
+          {/* Auth Actions */}
+          {isLoggedIn ? (
+            <div className="flex items-center gap-4">
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-slate-600 dark:text-white hover:text-emerald-600 dark:hover:text-yellow-400 transition-colors"
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="text-sm font-medium text-red-500 hover:text-red-700 flex items-center gap-1"
+              >
+                <LogOut className="w-4 h-4" /> Logout
+              </button>
+              <div className="w-8 h-8 bg-slate-100 dark:bg-white/10 rounded-full flex items-center justify-center border border-slate-200 dark:border-white/10">
+                <User className="w-4 h-4 text-slate-500 dark:text-emerald-200" />
+              </div>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="text-sm font-bold text-white dark:text-emerald-950 bg-emerald-600 dark:bg-yellow-500 px-5 py-2.5 rounded-full hover:bg-emerald-700 dark:hover:bg-yellow-400 transition-all shadow-lg shadow-emerald-500/20 dark:shadow-yellow-500/20"
             >
-              {theme === "dark" ? (
-                <Sun className="w-5 h-5 text-yellow-400" />
-              ) : (
-                <Moon className="w-5 h-5 text-indigo-600" />
-              )}
-            </button>
-
-            {/* Mobile Lang Switch */}
-            <button
-              onClick={() => {
-                const next =
-                  language === "en" ? "hi" : language === "hi" ? "mr" : "en";
-                setLanguage(next);
-              }}
-              className="text-emerald-700 dark:text-emerald-100 font-bold text-sm bg-emerald-100 dark:bg-emerald-800 px-2 py-1 rounded-md"
-            >
-              {language.toUpperCase()}
-            </button>
-
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="text-slate-600 dark:text-emerald-100 hover:text-emerald-600 dark:hover:text-white p-2"
-            >
-              {isOpen ? (
-                <X className="w-7 h-7" />
-              ) : (
-                <Menu className="w-7 h-7" />
-              )}
-            </button>
-          </div>
+              Login
+            </Link>
+          )}
         </div>
+
+        {/* Mobile Menu Button */}
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden p-2 text-slate-600 dark:text-white"
+        >
+          {isMobileMenuOpen ? (
+            <X className="w-6 h-6" />
+          ) : (
+            <Menu className="w-6 h-6" />
+          )}
+        </button>
       </div>
 
       {/* Mobile Menu */}
-      {isOpen && (
-        <div className="md:hidden bg-white dark:bg-emerald-900 border-t border-slate-200 dark:border-emerald-800">
-          <div className="px-4 pt-4 pb-8 space-y-3">
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-white dark:bg-emerald-950 border-b border-slate-200 dark:border-white/10 p-4 space-y-4">
+          <Link
+            href="/"
+            className="block text-slate-600 dark:text-white font-medium"
+          >
+            Home
+          </Link>
+          <Link
+            href="/about"
+            className="block text-slate-600 dark:text-white font-medium"
+          >
+            About
+          </Link>
+          {!isLoggedIn && (
             <Link
-              href="/"
-              onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 dark:text-emerald-100 hover:bg-emerald-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400"
+              href="/register"
+              className="block text-slate-600 dark:text-white font-medium"
             >
-              {t.navHome}
+              Register
             </Link>
+          )}
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-2 text-slate-600 dark:text-white font-medium w-full text-left"
+          >
+            {theme === "dark" ? (
+              <>
+                <Sun className="w-4 h-4" /> Light Mode
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4" /> Dark Mode
+              </>
+            )}
+          </button>
+          {isLoggedIn ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="block text-slate-600 dark:text-white font-medium"
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="block text-red-500 font-medium w-full text-left"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
             <Link
-              href="/about"
-              onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 dark:text-emerald-100 hover:bg-emerald-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400"
+              href="/login"
+              className="block text-emerald-600 dark:text-yellow-400 font-bold"
             >
-              {t.navAbout}
+              Login
             </Link>
-            <Link
-              href="/guide"
-              onClick={() => setIsOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 dark:text-emerald-100 hover:bg-emerald-50 dark:hover:bg-emerald-800 hover:text-emerald-600 dark:hover:text-yellow-400"
-            >
-              {t.navGuide}
-            </Link>
-
-            <div className="border-t border-slate-200 dark:border-emerald-800 my-4 pt-4">
-              {userName ? (
-                <>
-                  <div className="px-3 py-2 flex items-center gap-2 text-emerald-700 dark:text-yellow-400 font-medium">
-                    <User className="w-5 h-5" />
-                    {t.welcome}, {userName}
-                  </div>
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      setIsOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-red-500 dark:text-red-400 font-medium hover:bg-red-50 dark:hover:bg-emerald-800 rounded-lg"
-                  >
-                    {t.navLogout}
-                  </button>
-                </>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 px-3 mt-4">
-                  <Link
-                    href="/login"
-                    onClick={() => setIsOpen(false)}
-                    className="flex justify-center items-center py-3 border border-emerald-600 dark:border-emerald-700 text-emerald-600 dark:text-emerald-100 font-semibold rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-800"
-                  >
-                    {t.navLogin}
-                  </Link>
-                  <Link
-                    href="/register"
-                    onClick={() => setIsOpen(false)}
-                    className="flex justify-center items-center py-3 bg-emerald-600 dark:bg-yellow-500 text-white dark:text-emerald-950 font-bold rounded-xl shadow-md hover:bg-emerald-700 dark:hover:bg-yellow-400"
-                  >
-                    {t.navRegister}
-                  </Link>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
     </nav>

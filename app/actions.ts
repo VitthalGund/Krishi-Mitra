@@ -3,84 +3,163 @@
 import dbConnect from "@/lib/db";
 import LoanApplication from "@/models/LoanApplication";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import { ZodError } from "zod";
+import {
+  LoanFormData,
+  KCCSchema,
+  TractorSchema,
+  DairySchema,
+} from "@/lib/schemas";
+import { cookies } from "next/headers";
+import { verifyAccessToken, verifyRefreshToken } from "@/lib/auth";
 
-// --- Validation Schemas ---
+// Helper to get authenticated user (Mock/Token based)
+async function getUserId() {
+  // In a real app, verify token from headers/cookies here.
+  // We'll rely on the cookie created by login.
+  const cookieStore = cookies();
+  const refreshToken = cookieStore.get("refreshToken")?.value;
 
-// Flexible "details" schema that permits specific known fields but allows others (Mixed)
-// This matches the "Strict Base, Flexible Details" philosophy.
-const DetailsSchema = z
-  .object({
-    surveyNo: z.string().optional(),
-    crop: z.string().optional(),
-    acreage: z.string().optional(),
-    equipment: z.string().optional(),
-    dealer: z.string().optional(),
-    price: z.string().optional(),
-    animalCount: z.string().optional(),
-    animalType: z.string().optional(),
-    village: z.string().optional(),
-    cropSeason: z.string().optional(),
-    // Allow other fields for future extensibility without code changes
-  })
-  .passthrough();
-
-const LoanApplicationSchema = z.object({
-  loanType: z.enum(["KCC", "Mechanization", "Dairy"]),
-  // In a real app, userId would come from session, but we accept it or default it here.
-  userId: z.string().optional().default("653a1234567890abcdef1234"),
-  details: DetailsSchema,
-});
-
-export async function submitLoanApplication(data: any) {
-  await dbConnect();
+  if (!refreshToken) return null;
 
   try {
-    // 1. Validate Input
-    const validated = LoanApplicationSchema.parse({
-      loanType: data.loanType,
-      details: data, // Pass all other data as details
-    });
+    const payload = await verifyRefreshToken(refreshToken);
+    return payload.userId;
+  } catch (e) {
+    return null;
+  }
+}
 
-    // 2. Create Document
-    const newLoan = await LoanApplication.create({
-      userId: validated.userId,
-      type: validated.loanType,
-      status: "Submitted",
-      details: validated.details,
-      documents: [], // Will be updated by separate upload action if needed
-      aiAnalysis: "Pending AI Review",
-    });
+// --- Action: Save as Draft ---
+// Requirements: Upsert, "Draft" Status, NO Validation
+export async function saveDraft(data: any) {
+  try {
+    await dbConnect();
+    const userId = await getUserId();
 
-    console.log("Loan Application Created:", newLoan._id);
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
 
-    revalidatePath("/dashboard");
-    return { success: true, id: newLoan._id.toString() };
-  } catch (error: any) {
-    console.error("Submission Error:", error);
-    // Return friendly error for Zod issues
-    if (error instanceof z.ZodError) {
+    const { loanType, ...details } = data;
+
+    // We use a Flexible update. We don't validate 'details' against Zod here.
+    // Just ensure mandatory fields for DB (like mobile/userId) are present if it's a new doc.
+    const mobileNumber = details.mobile || details.mobileNumber;
+
+    if (!mobileNumber) {
       return {
         success: false,
-        error: "Validation Failed: " + error.errors[0]?.message,
+        error: "Mobile number is required to save a draft.",
       };
     }
-    return { success: false, error: error.message || "Database Error" };
+
+    // Ensure mobile is in details for querying
+    details.mobileNumber = mobileNumber;
+
+    const application = await LoanApplication.findOneAndUpdate(
+      { "details.mobileNumber": mobileNumber, userId }, // Find strictly by OWNER + Mobile
+      {
+        $set: {
+          userId,
+          type: loanType,
+          status: "Draft",
+          details: details,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    revalidatePath("/dashboard");
+    return { success: true, id: application._id.toString() };
+  } catch (error: any) {
+    console.error("Save Draft Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- Action: Submit Application ---
+// Requirements: Full Zod Validation, "Submitted" Status
+export async function submitApplication(data: any) {
+  try {
+    await dbConnect();
+    const userId = await getUserId();
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // 1. Validate based on Loan Type
+    const loanType = data.loanType;
+    let schema;
+
+    switch (loanType) {
+      case "KCC":
+        schema = KCCSchema;
+        break;
+      case "Mechanization":
+        schema = TractorSchema;
+        break;
+      case "Dairy":
+        schema = DairySchema;
+        break;
+      default:
+        return { success: false, error: "Invalid Loan Type" };
+    }
+
+    const parsed = schema.safeParse(data);
+
+    if (!parsed.success) {
+      const errorMessage =
+        parsed.error.errors[0]?.message || "Validation Failed";
+      return { success: false, error: errorMessage };
+    }
+
+    const validData = parsed.data;
+
+    // Ensure mobile is in details
+    const details = { ...validData } as any;
+    // @ts-ignore
+    const mobileNumber = validData.mobile;
+    details.mobileNumber = mobileNumber;
+
+    // 2. Persist to DB
+    const application = await LoanApplication.findOneAndUpdate(
+      { "details.mobileNumber": mobileNumber, userId },
+      {
+        $set: {
+          userId,
+          type: loanType,
+          status: "Submitted",
+          details: details,
+          aiAnalysis: {
+            riskScore: 0, // Placeholder
+            summary: "Submitted via Portal",
+            recommendedAction: "Pending Review",
+          },
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    revalidatePath("/dashboard");
+    return { success: true, id: application._id.toString() };
+  } catch (error: any) {
+    console.error("Submit Error:", error);
+    return { success: false, error: error.message };
   }
 }
 
 export async function getApplications() {
   await dbConnect();
-  // Lean queries are faster; explicit casting needed because _id is standard Object ID
-  const applications = await LoanApplication.find({})
-    .sort({ createdAt: -1 })
-    .lean();
+  const userId = await getUserId();
+  if (!userId) return [];
 
-  // Serialization for Client Components
-  return applications.map((app) => ({
+  // Convert _id to string to avoid serialization warnings
+  const apps = await LoanApplication.find({ userId })
+    .sort({ updatedAt: -1 })
+    .lean();
+  return apps.map((app: any) => ({
     ...app,
-    _id: (app as any)._id.toString(),
-    createdAt: (app as any).createdAt?.toISOString(),
-    updatedAt: (app as any).updatedAt?.toISOString(),
+    _id: app._id.toString(),
   }));
 }
