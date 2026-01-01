@@ -45,6 +45,10 @@ export default function ApplyPage() {
   const [verifying, setVerifying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Vision / Image Upload State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<string | null>(null);
+
   // Form Handling
   const {
     register,
@@ -107,6 +111,33 @@ export default function ApplyPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setAttachment(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() && !attachment) return;
+
+    const files = fileInputRef.current?.files;
+
+    handleChatSubmit(e, {
+      experimental_attachments: files ? files : undefined,
+    });
+
+    // Clear attachment preview after send
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const onSubmit = async (data: any) => {
     console.log("Submitting:", data);
@@ -425,6 +456,24 @@ export default function ApplyPage() {
               >
                 {/* Render Text Content */}
                 {m.content}
+                {/* Render Attachments */}
+                {m.experimental_attachments &&
+                  m.experimental_attachments.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      {m.experimental_attachments.map((att: any, idx: number) =>
+                        att.contentType?.startsWith("image/") ? (
+                          <img
+                            key={idx}
+                            src={att.url}
+                            alt="attachment"
+                            className="max-w-full rounded mt-1"
+                          />
+                        ) : (
+                          <span key={idx}>[Attachment]</span>
+                        )
+                      )}
+                    </div>
+                  )}
 
                 {/* Render Tool Invocations (Visual Feedback) */}
                 {m.toolInvocations?.map((toolInvocation) => {
@@ -466,9 +515,39 @@ export default function ApplyPage() {
 
         {/* Input */}
         <div className="p-4 border-t border-slate-200 bg-white">
-          <form onSubmit={handleChatSubmit} className="flex gap-2">
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={handleFileChange}
+          />
+
+          {/* Preview */}
+          {attachment && (
+            <div className="mb-2 relative inline-block">
+              <img
+                src={attachment}
+                alt="Preview"
+                className="h-12 w-12 rounded object-cover border border-slate-200"
+              />
+              <button
+                onClick={() => {
+                  setAttachment(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleCustomSubmit} className="flex gap-2">
             <button
               type="button"
+              onClick={() => fileInputRef.current?.click()}
               className="p-2 text-slate-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-emerald-50"
               title="Upload Document"
             >
@@ -483,7 +562,7 @@ export default function ApplyPage() {
             <button
               type="submit"
               className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 shadow-md disabled:opacity-50"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || (!input.trim() && !attachment)}
             >
               <Send className="w-4 h-4" />
             </button>

@@ -1,33 +1,71 @@
 "use server";
 
 import dbConnect from "@/lib/db";
-import LoanApplication, { ILoanApplication } from "@/models/LoanApplication";
+import LoanApplication from "@/models/LoanApplication";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+// --- Validation Schemas ---
+
+// Flexible "details" schema that permits specific known fields but allows others (Mixed)
+// This matches the "Strict Base, Flexible Details" philosophy.
+const DetailsSchema = z
+  .object({
+    surveyNo: z.string().optional(),
+    crop: z.string().optional(),
+    acreage: z.string().optional(),
+    equipment: z.string().optional(),
+    dealer: z.string().optional(),
+    price: z.string().optional(),
+    animalCount: z.string().optional(),
+    animalType: z.string().optional(),
+    village: z.string().optional(),
+    cropSeason: z.string().optional(),
+    // Allow other fields for future extensibility without code changes
+  })
+  .passthrough();
+
+const LoanApplicationSchema = z.object({
+  loanType: z.enum(["KCC", "Mechanization", "Dairy"]),
+  // In a real app, userId would come from session, but we accept it or default it here.
+  userId: z.string().optional().default("653a1234567890abcdef1234"),
+  details: DetailsSchema,
+});
 
 export async function submitLoanApplication(data: any) {
   await dbConnect();
 
   try {
-    const MOCK_USER_ID = "653a1234567890abcdef1234";
+    // 1. Validate Input
+    const validated = LoanApplicationSchema.parse({
+      loanType: data.loanType,
+      details: data, // Pass all other data as details
+    });
 
+    // 2. Create Document
     const newLoan = await LoanApplication.create({
-      userId: MOCK_USER_ID,
-      type: data.loanType || "KCC", // map from form data
+      userId: validated.userId,
+      type: validated.loanType,
       status: "Submitted",
-      details: {
-        ...data,
-        // clean up flattened fields into specific structure if needed,
-        // but schema allows Mixed so strict structure isn't forced yet.
-      },
-      documents: [],
+      details: validated.details,
+      documents: [], // Will be updated by separate upload action if needed
       aiAnalysis: "Pending AI Review",
     });
+
+    console.log("Loan Application Created:", newLoan._id);
 
     revalidatePath("/dashboard");
     return { success: true, id: newLoan._id.toString() };
   } catch (error: any) {
     console.error("Submission Error:", error);
-    return { success: false, error: error.message };
+    // Return friendly error for Zod issues
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: "Validation Failed: " + error.errors[0]?.message,
+      };
+    }
+    return { success: false, error: error.message || "Database Error" };
   }
 }
 
