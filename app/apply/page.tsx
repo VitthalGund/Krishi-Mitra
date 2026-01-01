@@ -18,17 +18,20 @@ import {
   Sprout,
   Milk,
   Loader2,
-  CheckCircle,
   X,
   Save,
   ArrowRight,
+  Mic,
+  MicOff,
+  Volume2,
 } from "lucide-react";
 import { submitApplication, saveDraft } from "../actions";
 import { useRouter } from "next/navigation";
 
+// --- Types ---
 type LoanType = "KCC" | "Mechanization" | "Dairy" | null;
 
-// Field Highlighting Component
+// --- Components ---
 const HighlightField = ({
   highlighted,
   children,
@@ -56,6 +59,11 @@ export default function ApplyPage() {
   const [highlightedFields, setHighlightedFields] = useState<string[]>([]);
   const router = useRouter();
 
+  // Voice State
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const recognitionRef = useRef<any>(null); // Use 'any' for window.SpeechRecognition
+
   // Vision / Image Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<string | null>(null);
@@ -73,14 +81,68 @@ export default function ApplyPage() {
     register,
     handleSubmit,
     setValue,
-    watch,
-    reset,
-    getValues, // Needed for Drafts
-    formState: { errors, isValid },
+    getValues,
+    formState: { errors },
   } = useForm<LoanFormData>({
     resolver: loanType ? zodResolver(currentSchema) : undefined,
     mode: "onChange",
   });
+
+  // --- Voice Logic (Native Web Speech API) ---
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false; // Stop after one sentence for "turn-taking" feel
+        recognition.interimResults = false;
+        recognition.lang = "en-IN"; // Default, could toggle to hi-IN
+
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          // Directly feed to Chat Input
+          handleChatSubmit(undefined, { data: { voiceInput: transcript } }); // We can't simulate typing easily, so we just append to messages or call API?
+          // Actually, useChat's `append` or `setInput` + `handleSubmit` is better.
+          // Let's rely on standard handleChatSubmit logic by faking an event or calling append.
+          // Correct pattern: Set input, then submit. But `input` state is managed by useChat.
+          // Workaround: We will use the `append` function provided by useChat, or manual fetch.
+          // EASIEST: Just set the transcript to input and auto-submit?
+          // `setInput` is not exposed directly in the destructured object above (oops, previously I didn't verify if setInput was there).
+          // Checking useChat docs: it returns `setInput`.
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    } else {
+      recognitionRef.current?.start();
+    }
+  };
+
+  const speakText = (text: string) => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      // Stop any previous speech
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "hi-IN"; // Try Hindi accent/voice if available, else falls back
+      utterance.rate = 1.0;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   // AI Chat Hook
   const {
@@ -89,13 +151,18 @@ export default function ApplyPage() {
     handleInputChange,
     handleSubmit: handleChatSubmit,
     isLoading,
+    setInput, // Need this for Voice
+    append,
   } = useChat({
     api: "/api/chat",
     maxSteps: 5,
+    onFinish: (message) => {
+      // Auto-speak response
+      speakText(message.content);
+    },
     onToolCall: async ({ toolCall }) => {
       if (toolCall.toolName === "update_form") {
         const args = toolCall.args as any;
-        console.log("AI Updating Form:", args);
 
         const newHighlights: string[] = [];
         const updateField = (key: keyof LoanFormData, value: any) => {
@@ -110,14 +177,11 @@ export default function ApplyPage() {
         updateField("mobile", args.mobile);
         updateField("village", args.village);
 
-        // Switch Loan Type if AI suggests
         if (
           args.loanType &&
           ["KCC", "Mechanization", "Dairy"].includes(args.loanType)
         ) {
           if (loanType !== args.loanType) {
-            // If we are in Selection State, this auto-selects.
-            // If we are in Form State, it switches tabs.
             setLoanType(args.loanType);
           }
         }
@@ -140,6 +204,16 @@ export default function ApplyPage() {
       }
     },
   });
+
+  // Update recognition handler to use `append`
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        append({ role: "user", content: transcript });
+      };
+    }
+  }, [append]);
 
   // Scroll to bottom of chat
   useEffect(() => {
@@ -172,7 +246,7 @@ export default function ApplyPage() {
 
   const onSaveDraft = async () => {
     setIsSaving(true);
-    const data = getValues(); // Get raw values, valid or not
+    const data = getValues();
     const result = await saveDraft({ ...data, loanType });
     setIsSaving(false);
 
@@ -185,7 +259,7 @@ export default function ApplyPage() {
 
   const onSubmit = async (data: LoanFormData) => {
     setIsSaving(true);
-    const result = await submitApplication({ ...data, loanType }); // Re-validates on server
+    const result = await submitApplication({ ...data, loanType });
     setIsSaving(false);
 
     if (result.success) {
@@ -205,6 +279,9 @@ export default function ApplyPage() {
       setHighlightedFields((prev) => [...prev, "acreage"]);
       setTimeout(() => setHighlightedFields([]), 2000);
     }, 2000);
+
+    // Voice Feedback
+    speakText("Land verified successfully. 3.5 acres found for Vitthal Gund.");
   };
 
   // --- RENDER: STEP 1 (Selection) ---
@@ -610,12 +687,17 @@ export default function ApplyPage() {
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <Bot className="w-5 h-5 text-emerald-600" /> Krishi-Sahayak
           </h3>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="text-slate-400 hover:text-slate-600"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2">
+            {isSpeaking && (
+              <Volume2 className="w-5 h-5 text-emerald-600 animate-pulse" />
+            )}
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
@@ -683,7 +765,26 @@ export default function ApplyPage() {
               </button>
             </div>
           )}
-          <form onSubmit={handleCustomChatSubmit} className="flex gap-2">
+          <form
+            onSubmit={handleCustomChatSubmit}
+            className="flex gap-2 items-center"
+          >
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`p-3 rounded-full transition-all ${
+                isListening
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {isListening ? (
+                <MicOff className="w-5 h-5" />
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -695,7 +796,7 @@ export default function ApplyPage() {
               value={input}
               onChange={handleInputChange}
               placeholder="Type or speak..."
-              className="flex-1 bg-slate-100 rounded-full px-4 outline-none focus:ring-1 focus:ring-emerald-500"
+              className="flex-1 bg-slate-100 rounded-full px-4 py-2 outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <button
               type="submit"

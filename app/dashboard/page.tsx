@@ -35,8 +35,8 @@ export default async function DashboardPage() {
               No Applications Yet
             </h3>
             <p className="text-slate-500 mb-8 max-w-sm mx-auto">
-              You haven't applied for any loans yet. Start a new application to
-              get financial support.
+              You haven&apos;t applied for any loans yet. Start a new
+              application to get financial support.
             </p>
             <Link
               href="/apply"

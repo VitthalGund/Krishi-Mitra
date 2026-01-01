@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
+import { signAccessToken, signRefreshToken } from "@/lib/auth";
+import { serialize } from "cookie";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,25 +22,50 @@ export async function POST(req: NextRequest) {
     let user = await User.findOne({ mobileNumber });
 
     if (user) {
-      // User exists, return the existing user (Login)
-      return NextResponse.json(
-        { user, message: "User logged in existing" },
-        { status: 200 }
-      );
+      // Allow "registering" an existing user to act as Login for convenience,
+      // OR return 409 Conflict. Based on "Simplicity" goal, acting as login is smoother.
+      // User exists, proceed to token generation.
+    } else {
+      user = await User.create({
+        name,
+        mobileNumber,
+        language: language || "en",
+      });
     }
 
-    // Create new user
-    user = await User.create({
-      name,
-      mobileNumber,
-      language: language || "Hindi",
+    // Generate Tokens
+    const payload = {
+      userId: user._id.toString(),
+      mobileNumber: user.mobileNumber,
+    };
+    const accessToken = await signAccessToken(payload);
+    const refreshToken = await signRefreshToken(payload);
+
+    // Set Refresh Token in HttpOnly Cookie
+    const cookieSerialized = serialize("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
     });
 
     return NextResponse.json(
-      { user, message: "User registered successfully" },
-      { status: 201 }
+      {
+        accessToken,
+        user: {
+          name: user.name,
+          mobileNumber: user.mobileNumber,
+          language: user.language,
+        },
+        message: "Registration successful",
+      },
+      {
+        status: 201,
+        headers: { "Set-Cookie": cookieSerialized },
+      }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
