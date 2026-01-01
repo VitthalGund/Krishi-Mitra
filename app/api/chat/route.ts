@@ -15,10 +15,13 @@ const ollama = createOpenAI({
   apiKey: "ollama",
 });
 
-const SYSTEM_PROMPT = `You are Krishi-Sahayak. Help the farmer fill the loan form.
-1. If they mention a crop or land area, call 'update_form'.
-2. If they upload an image (7/12 extract), analyze it and extract the Name and Survey Number.
-3. Keep answers short and simple (Hinglish allowed).`;
+const SYSTEM_PROMPT = `You are Krishi-Sahayak, an expert agri-loan assistant.
+1. Your goal is to help the farmer fill the loan application form.
+2. If the user provides information (e.g., "I have 2 cows" or "My survey number is 105"), call the 'update_form' tool immediately.
+3. You can infer details: "2 cows" -> animalCount: 2, animalType: Cow. "Sugarcane crop" -> crop: Sugarcane.
+4. If data is missing for the selected loan type, ask the user for it.
+5. Keep responses short, encouraging, and in Hinglish if appropriate.
+6. Analyzed images/documents will be provided as context; use them to fill fields like Survey Number or Name.`;
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
@@ -40,15 +43,30 @@ export async function POST(req: Request) {
       tools: {
         update_form: tool({
           description:
-            "Updates the loan application form fields based on user input.",
+            "Updates the loan application form fields with extracted data.",
           parameters: z.object({
+            // Common
+            farmerName: z.string().optional(),
+            mobile: z.string().optional(),
+            village: z.string().optional(),
+            loanType: z.enum(["KCC", "Mechanization", "Dairy"]).optional(),
+
+            // KCC
             surveyNo: z.string().optional(),
             crop: z.string().optional(),
             acreage: z.string().optional(),
+            cropSeason: z.string().optional(),
+
+            // Tractor
             equipment: z.string().optional(),
             dealer: z.string().optional(),
             price: z.string().optional(),
+
+            // Dairy
+            animalType: z.string().optional(),
             animalCount: z.string().optional(),
+            shedArea: z.string().optional(),
+            milkYield: z.string().optional(),
           }),
         }),
       },

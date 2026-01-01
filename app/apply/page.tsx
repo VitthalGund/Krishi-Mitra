@@ -3,51 +3,65 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "ai/react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  KCCSchema,
+  TractorSchema,
+  DairySchema,
+  LoanFormData,
+} from "@/lib/schemas";
 import {
   Send,
   Paperclip,
   Bot,
-  User,
   Tractor,
   Sprout,
   Milk,
   Loader2,
   CheckCircle,
   X,
-  FileText,
 } from "lucide-react";
 import { submitLoanApplication } from "../actions";
 
 type LoanType = "KCC" | "Mechanization" | "Dairy";
 
-interface LoanFormData {
-  surveyNo?: string;
-  crop?: string;
-  acreage?: string;
-  equipment?: string;
-  dealer?: string;
-  price?: string;
-  animalCount?: string;
-  animalType?: string;
-  village?: string;
-  cropSeason?: string;
-  dealerName?: string;
-  equipmentType?: string;
-  quotationAmount?: string;
-  loanAmount?: string;
-  shedArea?: string;
-  milkYield?: string;
-}
+// Field Highlighting Component
+const HighlightField = ({
+  highlighted,
+  children,
+}: {
+  highlighted: boolean;
+  children: React.ReactNode;
+}) => {
+  return (
+    <div
+      className={`transition-colors duration-500 ease-in-out rounded-lg ${
+        highlighted ? "ring-2 ring-yellow-400 bg-yellow-50" : ""
+      }`}
+    >
+      {children}
+    </div>
+  );
+};
 
 export default function ApplyPage() {
   const [loanType, setLoanType] = useState<LoanType>("KCC");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [highlightedFields, setHighlightedFields] = useState<string[]>([]);
 
   // Vision / Image Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<string | null>(null);
+
+  // Dynamic Schema Selection
+  const currentSchema =
+    loanType === "KCC"
+      ? KCCSchema
+      : loanType === "Mechanization"
+      ? TractorSchema
+      : DairySchema;
 
   // Form Handling
   const {
@@ -55,27 +69,19 @@ export default function ApplyPage() {
     handleSubmit,
     setValue,
     watch,
+    reset,
     formState: { errors },
-  } = useForm({
+  } = useForm<LoanFormData>({
+    resolver: zodResolver(currentSchema),
     defaultValues: {
-      surveyNo: "",
-      crop: "",
-      acreage: "",
-      equipment: "",
-      dealer: "",
-      price: "",
-      animalCount: "",
-      animalType: "Cow",
-      village: "",
-      cropSeason: "Kharif",
-      dealerName: "",
-      equipmentType: "Tractor",
-      quotationAmount: "",
-      loanAmount: "",
-      shedArea: "",
-      milkYield: "",
+      loanType: "KCC", // Default
     },
   });
+
+  // Reset form when loan type changes (optional, but good for clean slate)
+  useEffect(() => {
+    reset({ loanType: loanType as any });
+  }, [loanType, reset]);
 
   // AI Chat Hook
   const {
@@ -93,16 +99,49 @@ export default function ApplyPage() {
         const args = toolCall.args as any;
         console.log("AI Updating Form:", args);
 
-        // Update form fields
-        if (args.surveyNo) setValue("surveyNo", args.surveyNo);
-        if (args.crop) setValue("crop", args.crop);
-        if (args.acreage) setValue("acreage", args.acreage);
-        if (args.equipment) setValue("equipment", args.equipment);
-        if (args.dealer) setValue("dealer", args.dealer);
-        if (args.price) setValue("price", args.price);
-        if (args.animalCount) setValue("animalCount", args.animalCount);
+        const newHighlights: string[] = [];
 
-        return "Form updated on screen.";
+        // Helper to update and highlight
+        const updateField = (key: keyof LoanFormData, value: any) => {
+          if (value) {
+            setValue(key, value);
+            newHighlights.push(key);
+          }
+        };
+
+        // Common
+        updateField("farmerName", args.farmerName);
+        updateField("mobile", args.mobile);
+        updateField("village", args.village);
+
+        // Switch Loan Type if AI suggests
+        if (
+          args.loanType &&
+          ["KCC", "Mechanization", "Dairy"].includes(args.loanType)
+        ) {
+          if (loanType !== args.loanType) {
+            setLoanType(args.loanType);
+            // Note: Changing loan type might reset form due to useEffect above.
+            // In a perfect world we'd merge values. For now, we let it switch.
+          }
+        }
+
+        // Specifics
+        updateField("surveyNo", args.surveyNo);
+        updateField("crop", args.crop);
+        updateField("acreage", args.acreage);
+        updateField("cropSeason", args.cropSeason);
+        updateField("equipment", args.equipment);
+        updateField("dealer", args.dealer);
+        updateField("price", args.price); // Map price -> quotationAmount logic if needed
+        updateField("animalCount", args.animalCount);
+        updateField("animalType", args.animalType);
+
+        // Trigger Highlight Effect
+        setHighlightedFields(newHighlights);
+        setTimeout(() => setHighlightedFields([]), 2000); // Remove after 2s
+
+        return "Form updated successfully.";
       }
     },
   });
@@ -134,15 +173,14 @@ export default function ApplyPage() {
       experimental_attachments: files ? files : undefined,
     });
 
-    // Clear attachment preview after send
     setAttachment(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: LoanFormData) => {
     console.log("Submitting:", data);
     try {
-      const result = await submitLoanApplication({ ...data, loanType });
+      const result = await submitLoanApplication(data);
       if (result.success) {
         alert("Application Submitted! ID: " + result.id);
       } else {
@@ -155,11 +193,12 @@ export default function ApplyPage() {
 
   const verifyLand = () => {
     setVerifying(true);
-    // Mock AgriStack
     setTimeout(() => {
-      setValue("acreage", "3.5");
+      setValue("acreage", 3.5); // Use number for Zod coercion or string if schema allows
       alert("AgriStack Verified: Owner Vitthal Gund");
       setVerifying(false);
+      setHighlightedFields((prev) => [...prev, "acreage"]);
+      setTimeout(() => setHighlightedFields([]), 2000);
     }, 2000);
   };
 
@@ -210,6 +249,63 @@ export default function ApplyPage() {
             onSubmit={handleSubmit(onSubmit)}
             className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6"
           >
+            {/* Common Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
+              <HighlightField
+                highlighted={highlightedFields.includes("farmerName")}
+              >
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Farmer Name
+                </label>
+                <input
+                  {...register("farmerName")}
+                  className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="Ram Lal"
+                />
+                {errors.farmerName && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.farmerName.message as string}
+                  </p>
+                )}
+              </HighlightField>
+
+              <HighlightField
+                highlighted={highlightedFields.includes("mobile")}
+              >
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Mobile Number
+                </label>
+                <input
+                  {...register("mobile")}
+                  className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="9876543210"
+                />
+                {errors.mobile && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.mobile.message as string}
+                  </p>
+                )}
+              </HighlightField>
+
+              <HighlightField
+                highlighted={highlightedFields.includes("village")}
+              >
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Village
+                </label>
+                <input
+                  {...register("village")}
+                  className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="Village Name"
+                />
+                {errors.village && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.village.message as string}
+                  </p>
+                )}
+              </HighlightField>
+            </div>
+
             {/* KCC Fields */}
             {loanType === "KCC" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
@@ -220,8 +316,9 @@ export default function ApplyPage() {
                     </h3>
                   </div>
 
-                  {/* Survey Number Verification */}
-                  <div>
+                  <HighlightField
+                    highlighted={highlightedFields.includes("surveyNo")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Survey / Gat Number
                     </label>
@@ -240,38 +337,39 @@ export default function ApplyPage() {
                         {verifying ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          "Verify Land"
+                          "Verify"
                         )}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Verifies against AgriStack DB
-                    </p>
-                  </div>
+                    {errors.surveyNo && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.surveyNo.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Village Name
-                    </label>
-                    <input
-                      {...register("village")}
-                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="Enter Village"
-                    />
-                  </div>
-
-                  <div>
+                  <HighlightField
+                    highlighted={highlightedFields.includes("acreage")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Total Land Area (Acres)
                     </label>
                     <input
                       {...register("acreage")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none bg-slate-50"
-                      placeholder="Auto-filled after verification"
+                      placeholder="Auto-filled"
                       readOnly
                     />
-                  </div>
-                  <div>
+                    {errors.acreage && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.acreage.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
+
+                  <HighlightField
+                    highlighted={highlightedFields.includes("crop")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Crop Name
                     </label>
@@ -280,7 +378,28 @@ export default function ApplyPage() {
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                       placeholder="e.g. Sugarcane"
                     />
-                  </div>
+                    {errors.crop && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.crop.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
+
+                  <HighlightField
+                    highlighted={highlightedFields.includes("cropSeason")}
+                  >
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Season
+                    </label>
+                    <select
+                      {...register("cropSeason")}
+                      className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="Kharif">Kharif</option>
+                      <option value="Rabi">Rabi</option>
+                      <option value="Zaid">Zaid</option>
+                    </select>
+                  </HighlightField>
                 </div>
               </div>
             )}
@@ -289,7 +408,9 @@ export default function ApplyPage() {
             {loanType === "Mechanization" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                  <HighlightField
+                    highlighted={highlightedFields.includes("equipment")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Equipment Name
                     </label>
@@ -298,8 +419,16 @@ export default function ApplyPage() {
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                       placeholder="e.g. John Deere 5310"
                     />
-                  </div>
-                  <div>
+                    {errors.equipment && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.equipment.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
+
+                  <HighlightField
+                    highlighted={highlightedFields.includes("dealer")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Dealer Name
                     </label>
@@ -308,17 +437,30 @@ export default function ApplyPage() {
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                       placeholder="Authorized Dealer"
                     />
-                  </div>
-                  <div>
+                    {errors.dealer && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.dealer.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
+
+                  <HighlightField
+                    highlighted={highlightedFields.includes("price")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Quotation Price (₹)
                     </label>
                     <input
                       {...register("price")}
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="8,50,000"
+                      placeholder="850000"
                     />
-                  </div>
+                    {errors.price && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.price.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
                 </div>
               </div>
             )}
@@ -327,7 +469,9 @@ export default function ApplyPage() {
             {loanType === "Dairy" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                  <HighlightField
+                    highlighted={highlightedFields.includes("animalType")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Animal Type
                     </label>
@@ -338,8 +482,11 @@ export default function ApplyPage() {
                       <option>Cow</option>
                       <option>Buffalo</option>
                     </select>
-                  </div>
-                  <div>
+                  </HighlightField>
+
+                  <HighlightField
+                    highlighted={highlightedFields.includes("animalCount")}
+                  >
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Number of Animals
                     </label>
@@ -348,7 +495,12 @@ export default function ApplyPage() {
                       className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
                       placeholder="e.g. 5"
                     />
-                  </div>
+                    {errors.animalCount && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {errors.animalCount.message as string}
+                      </p>
+                    )}
+                  </HighlightField>
                 </div>
               </div>
             )}
@@ -371,7 +523,7 @@ export default function ApplyPage() {
           isSidebarOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        {/* Toggle Button (Visible when closed) */}
+        {/* Toggle Button */}
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
@@ -411,32 +563,8 @@ export default function ApplyPage() {
             <div className="mt-10 p-6 bg-white rounded-xl border border-slate-200 text-center">
               <h4 className="font-semibold text-slate-700 mb-2">Welcome!</h4>
               <p className="text-sm text-slate-500 mb-4">
-                I can help you fill the form. Try saying:
+                I can help you fill the form.
               </p>
-              <div className="space-y-2">
-                <button
-                  onClick={() =>
-                    handleInputChange({
-                      target: { value: "I want a tractor loan for John Deere" },
-                    } as any)
-                  }
-                  className="w-full text-left text-xs bg-emerald-50 text-emerald-700 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
-                >
-                  "I want a tractor loan..."
-                </button>
-                <button
-                  onClick={() =>
-                    handleInputChange({
-                      target: {
-                        value: "My survey number is 105/2, crop is Sugarcane",
-                      },
-                    } as any)
-                  }
-                  className="w-full text-left text-xs bg-emerald-50 text-emerald-700 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
-                >
-                  "My survey number is 105/2..."
-                </button>
-              </div>
             </div>
           )}
 
@@ -454,9 +582,8 @@ export default function ApplyPage() {
                     : "bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm"
                 }`}
               >
-                {/* Render Text Content */}
                 {m.content}
-                {/* Render Attachments */}
+                {/* Attachments */}
                 {m.experimental_attachments &&
                   m.experimental_attachments.length > 0 && (
                     <div className="mt-2 text-xs">
@@ -474,35 +601,9 @@ export default function ApplyPage() {
                       )}
                     </div>
                   )}
-
-                {/* Render Tool Invocations (Visual Feedback) */}
-                {m.toolInvocations?.map((toolInvocation) => {
-                  const toolCallId = toolInvocation.toolCallId;
-                  const addResult = (result: string) =>
-                    addToolResult({ toolCallId, result });
-
-                  // Just showing a small indicator that a tool was utilized
-                  return (
-                    <div
-                      key={toolCallId}
-                      className="mt-2 text-xs bg-slate-100 p-2 rounded border border-slate-200"
-                    >
-                      <span className="font-semibold text-slate-500">
-                        🛠️ Tool: {toolInvocation.toolName}
-                      </span>
-                      {/* We don't need to manually invoke here as we handle state in onToolCall */}
-                      {"result" in toolInvocation && (
-                        <div className="text-emerald-600 mt-1">
-                          Done: {JSON.stringify(toolInvocation.result)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
           ))}
-
           {isLoading && (
             <div className="flex justify-start">
               <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm">
@@ -549,7 +650,6 @@ export default function ApplyPage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="p-2 text-slate-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-emerald-50"
-              title="Upload Document"
             >
               <Paperclip className="w-5 h-5" />
             </button>
@@ -561,8 +661,7 @@ export default function ApplyPage() {
             />
             <button
               type="submit"
-              className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 shadow-md disabled:opacity-50"
-              disabled={isLoading || (!input.trim() && !attachment)}
+              className="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 shadow-md"
             >
               <Send className="w-4 h-4" />
             </button>
