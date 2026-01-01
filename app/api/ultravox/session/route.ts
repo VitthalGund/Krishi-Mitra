@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const ULTRAVOX_API_KEY = process.env.ULTRAVOX_API_KEY;
 
   if (!ULTRAVOX_API_KEY) {
@@ -9,6 +9,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  console.log("Initializing Ultravox Session:", _req.url);
 
   const systemPrompt = `You are Krishi-Mitra, a government agricultural loan officer. Language Protocol: Listen to the user's first few words. If they speak Hindi, reply ONLY in Hindi. If Marathi, reply in Marathi. If Tamil, reply in Tamil. If English, reply in English. Do not ask to switch languages; just adapt. Goal: You must collect 4 pieces of information: Name, Mobile Number, Crop Type, and Loan Amount. Style: Be warm, respectful, and patient. Speak slowly. Action: Once you have all 4 details, call the save_loan_application tool immediately.`;
 
@@ -19,11 +21,11 @@ export async function POST(req: NextRequest) {
     temperature: 0.3,
     selectedTools: [
       {
-        definition: {
-          name: "save_loan_application",
+        temporaryTool: {
+          modelToolName: "save_loan_application",
           description:
             "Saves the farmer's loan request to the central database.",
-          parameters: {
+          dynamicParameters: {
             type: "object",
             properties: {
               farmerName: {
