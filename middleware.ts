@@ -16,12 +16,18 @@ export async function middleware(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
     let accessToken = authHeader?.split(" ")[1];
 
-    // Check Cookie if header missing (fallback for browser nav)
+    // Check Cookie if header missing
     if (!accessToken) {
-      // Note: For strict API usage we might rely only on headers,
-      // but for app nav using cookies is convenient if we set one for access too.
-      // However, we predominantly rely on Refresh Token cookie for session persistence.
-      // Let's check for refresh token to imply session.
+      accessToken = req.cookies.get("accessToken")?.value;
+    }
+
+    if (accessToken) {
+      try {
+        await verifyAccessToken(accessToken);
+        return NextResponse.next();
+      } catch (err) {
+        // Access token invalid/expired, fall through to refresh token check
+      }
     }
 
     // Since we are validating in middleware, we need to be careful.

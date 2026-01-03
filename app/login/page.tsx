@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sprout, Lock, AlertCircle } from "lucide-react";
+import { Lock, AlertCircle } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
 import { z } from "zod";
 
 // Simple validation schema
@@ -16,6 +17,7 @@ const loginSchema = z.object({
 export default function Login() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { login } = useAuth();
   const [mobileNumber, setMobileNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -49,22 +51,22 @@ export default function Login() {
 
       if (res.ok && data.accessToken) {
         // 3. Success
-        // Store user details for UI (Navbar)
-        localStorage.setItem("krishi_user_mobile", data.user.mobile);
-        localStorage.setItem("krishi_user_name", data.user.name);
+        // Update global auth state via Context
+        login({
+          name: data.user.name,
+          mobile: data.user.mobileNumber || data.user.mobile,
+        });
 
         // Redirect
         const params = new URLSearchParams(window.location.search);
         const redirectUrl = params.get("from") || "/dashboard"; // Redirect to dashboard by default
         router.push(redirectUrl);
-        // Force refresh to update Navbar state immediately
-        router.refresh();
       } else {
         setError(
           data.message || "Login failed. Please check your credentials."
         );
       }
-    } catch (err) {
+    } catch {
       setError("Connection failed. Please try again.");
     } finally {
       setLoading(false);
@@ -129,7 +131,7 @@ export default function Login() {
         </form>
 
         <p className="mt-8 text-center text-sm text-slate-500 dark:text-emerald-400/60">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <a
             href="/register"
             className="text-emerald-600 dark:text-yellow-400 font-semibold hover:underline"

@@ -58,7 +58,7 @@ export async function saveDraft(data: any) {
     details.mobileNumber = mobileNumber;
 
     const application = await LoanApplication.findOneAndUpdate(
-      { "details.mobileNumber": mobileNumber, userId }, // Find strictly by OWNER + Mobile
+      { userId, type: loanType }, // Find strictly by OWNER + TYPE
       {
         $set: {
           userId,
@@ -124,7 +124,7 @@ export async function submitApplication(data: any) {
 
     // 2. Persist to DB
     const application = await LoanApplication.findOneAndUpdate(
-      { "details.mobileNumber": mobileNumber, userId },
+      { userId, type: loanType },
       {
         $set: {
           userId,

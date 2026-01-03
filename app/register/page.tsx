@@ -4,10 +4,22 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sprout } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
+import { z } from "zod";
+
+// Validation Schema
+const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  mobileNumber: z
+    .string()
+    .regex(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
+  language: z.enum(["en", "hi", "mr"]),
+});
 
 export default function Register() {
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     mobileNumber: "",
@@ -15,6 +27,9 @@ export default function Register() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -24,12 +39,36 @@ export default function Register() {
     if (e.target.name === "language") {
       setLanguage(e.target.value as "en" | "hi" | "mr");
     }
+    // Clear specific error when user types
+    if (validationErrors[e.target.name]) {
+      setValidationErrors({ ...validationErrors, [e.target.name]: "" });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setValidationErrors({});
+
+    // 1. Validation
+    const result = registerSchema.safeParse(formData);
+    if (!result.success) {
+      const formattedErrors = result.error.flatten().fieldErrors;
+      const errors: Record<string, string> = {};
+
+      // Map flattened errors to our simple state
+      Object.keys(formattedErrors).forEach((key) => {
+        const fieldError = formattedErrors[key as keyof typeof formattedErrors];
+        if (fieldError && fieldError.length > 0) {
+          errors[key] = fieldError[0];
+        }
+      });
+
+      setValidationErrors(errors);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/auth/register", {
@@ -41,18 +80,22 @@ export default function Register() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Registration failed");
+        throw new Error(data.message || data.error || "Registration failed");
       }
 
-      localStorage.setItem("krishi_user_mobile", data.user.mobileNumber);
-      localStorage.setItem("krishi_user_name", data.user.name);
+      // 2. Success - Update Context
+      login({
+        name: data.user.name,
+        mobile: data.user.mobileNumber || data.user.mobile,
+      });
 
       // Ensure global language matches preference
       setLanguage(formData.language as "en" | "hi" | "mr");
 
       router.push("/");
     } catch (err: any) {
-      setError(err.message);
+      const errorMessage = err?.message || "An unexpected error occurred";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -100,6 +143,11 @@ export default function Register() {
               className="w-full px-5 py-3.5 rounded-xl bg-slate-50 dark:bg-emerald-900/30 border border-slate-200 dark:border-emerald-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-emerald-700 focus:outline-none focus:border-emerald-500 dark:focus:border-yellow-500/50 focus:ring-1 focus:ring-emerald-500 dark:focus:ring-yellow-500/50 transition-all font-medium"
               placeholder="e.g. Ram Lal"
             />
+            {validationErrors.name && (
+              <p className="text-xs text-red-500 mt-1 ml-1">
+                {validationErrors.name}
+              </p>
+            )}
           </div>
 
           {/* Mobile Input */}
@@ -116,6 +164,11 @@ export default function Register() {
               className="w-full px-5 py-3.5 rounded-xl bg-slate-50 dark:bg-emerald-900/30 border border-slate-200 dark:border-emerald-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-emerald-700 focus:outline-none focus:border-emerald-500 dark:focus:border-yellow-500/50 focus:ring-1 focus:ring-emerald-500 dark:focus:ring-yellow-500/50 transition-all font-medium"
               placeholder="e.g. 9876543210"
             />
+            {validationErrors.mobileNumber && (
+              <p className="text-xs text-red-500 mt-1 ml-1">
+                {validationErrors.mobileNumber}
+              </p>
+            )}
           </div>
 
           {/* Language Select */}
@@ -170,7 +223,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 dark:bg-gradient-to-r dark:from-yellow-500 dark:to-yellow-600 dark:hover:from-yellow-400 dark:hover:to-yellow-500 text-white dark:text-emerald-950 font-bold py-4 rounded-xl shadow-lg shadow-emerald-500/20 dark:shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5 mt-4"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 dark:bg-linear-to-r dark:from-yellow-500 dark:to-yellow-600 dark:hover:from-yellow-400 dark:hover:to-yellow-500 text-white dark:text-emerald-950 font-bold py-4 rounded-xl shadow-lg shadow-emerald-500/20 dark:shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5 mt-4"
           >
             {loading ? "Creating Account..." : t.formSubmit}
           </button>

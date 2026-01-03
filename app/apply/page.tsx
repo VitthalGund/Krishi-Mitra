@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -233,10 +233,10 @@ export default function ApplyPage() {
 
   const handleCustomChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() && !attachment) return;
+    if (!input?.trim() && !attachment) return;
     const files = fileInputRef.current?.files;
     handleChatSubmit(e, {
-      experimental_attachments: files ? files : undefined,
+      experimental_attachments: files ? Array.from(files) : undefined,
     });
     setAttachment(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -772,7 +772,10 @@ export default function ApplyPage() {
             <button
               type="button"
               onClick={toggleListening}
+              disabled={isLoading}
               className={`p-3 rounded-full transition-all ${
+                isLoading ? "opacity-50 cursor-not-allowed bg-slate-100" : ""
+              } ${
                 isListening
                   ? "bg-red-500 text-white animate-pulse"
                   : "bg-slate-100 text-slate-500 hover:bg-slate-200"

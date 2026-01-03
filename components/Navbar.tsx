@@ -3,29 +3,18 @@
 import Link from "next/link";
 import { User, Sun, Moon, Menu, X, LogOut } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import GoogleTranslate from "./GoogleTranslate";
 
 export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const router = useRouter();
-
-  useEffect(() => {
-    // Check if user is logged in via localStorage (set by Login page)
-    const user = localStorage.getItem("krishi_user_mobile");
-    setIsLoggedIn(!!user);
-  }, []);
+  const { user, logout } = useAuth();
+  const isLoggedIn = !!user;
 
   const handleLogout = async () => {
-    // Call API to clear cookies
-    await fetch("/api/auth/logout", { method: "POST" });
-    // Clear local state
-    localStorage.removeItem("krishi_user_mobile");
-    localStorage.removeItem("krishi_user_name");
-    setIsLoggedIn(false);
-    router.push("/login");
+    await logout();
   };
 
   return (
@@ -67,6 +56,8 @@ export default function Navbar() {
           )}
 
           <div className="w-px h-6 bg-slate-200 dark:bg-white/10" />
+
+          <GoogleTranslate />
 
           {/* Theme Toggle */}
           <button
@@ -159,6 +150,9 @@ export default function Navbar() {
               </>
             )}
           </button>
+          <div className="py-2">
+            <GoogleTranslate />
+          </div>
           {isLoggedIn ? (
             <>
               <Link

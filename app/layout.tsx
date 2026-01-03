@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import ConditionalFooter from "@/components/ConditionalFooter";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider } from "@/context/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,11 +25,13 @@ export default function RootLayout({
         className={`${inter.className} bg-slate-50 dark:bg-emerald-950 transition-colors duration-300`}
       >
         <ThemeProvider>
-          <LanguageProvider>
-            <Navbar />
-            {children}
-            <Footer />
-          </LanguageProvider>
+          <AuthProvider>
+            <LanguageProvider>
+              <Navbar />
+              {children}
+              <ConditionalFooter />
+            </LanguageProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

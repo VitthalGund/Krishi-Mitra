@@ -17,13 +17,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // Find or Create User
-    let user = await User.findOne({ mobileNumber });
+    // Find User
+    const user = await User.findOne({ mobileNumber });
     if (!user) {
-      user = await User.create({
-        mobileNumber,
-        name: name || "Farmer", // Default name if not provided
-      });
+      return NextResponse.json(
+        { message: "User not registered. Please sign up first." },
+        { status: 404 }
+      );
     }
 
     // Generate Tokens
