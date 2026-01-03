@@ -24,15 +24,17 @@ export async function middleware(req: NextRequest) {
   }
 
   // If no access token but valid refresh token exists, redirect to refresh API
+  // middleware.ts partial update
   if (refreshToken) {
     try {
       await verifyToken(refreshToken);
-      // Create a rewrite/redirect to the internal refresh route
+      // If the access token is dead but refresh is alive,
+      // we redirect to the refresh route to get a new one.
       const refreshUrl = new URL("/api/auth/refresh", req.url);
       refreshUrl.searchParams.set("from", pathname);
       return NextResponse.redirect(refreshUrl);
     } catch {
-      // Both tokens failed
+      // Refresh token also invalid
     }
   }
 

@@ -5,7 +5,7 @@ import LoanApplication, { ILoanApplication } from "@/models/LoanApplication";
 import { revalidatePath } from "next/cache";
 import { LoanSchema, type LoanFormData } from "@/lib/schemas";
 import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/auth";
+import { verifyToken } from "@/lib/auth"; // Ensure lib/auth has verifyToken exported
 import User from "@/models/User";
 
 /**
@@ -18,6 +18,7 @@ async function getAuthenticatedUserId(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
+    // Correctly await the token verification
     const payload = await verifyToken(refreshToken);
     return payload.userId;
   } catch (error) {
@@ -62,7 +63,7 @@ export async function saveDraft(
 
     const { loanType, ...details } = data;
 
-    // Use userId and type as a composite key to ensure only one draft exists per loan type.
+    // Composite key (userId + loanType + status) prevents duplicate drafts per category
     const application = await LoanApplication.findOneAndUpdate(
       { userId, type: loanType, status: "Draft" },
       {
@@ -111,7 +112,7 @@ export async function submitApplication(data: unknown) {
     const validData = parsed.data;
 
     const application = await LoanApplication.findOneAndUpdate(
-      { userId, type: validData.loanType },
+      { userId, type: validData.loanType, status: "Draft" }, // Update the existing draft
       {
         $set: {
           userId,
@@ -147,6 +148,5 @@ export async function getApplications(): Promise<ILoanApplication[]> {
     .sort({ updatedAt: -1 })
     .lean();
 
-  // Ensuring the array is typed correctly as the model interface
   return apps as unknown as ILoanApplication[];
 }
