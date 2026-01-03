@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -6,45 +6,36 @@ if (!JWT_SECRET) {
 }
 const ENCODED_SECRET = new TextEncoder().encode(JWT_SECRET);
 
-export interface TokenPayload {
+export interface TokenPayload extends JWTPayload {
   userId: string;
   mobileNumber: string;
 }
 
-export const signAccessToken = async (payload: TokenPayload) => {
-  return new SignJWT({ ...payload })
+export const signAccessToken = async (
+  payload: TokenPayload
+): Promise<string> => {
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("15m")
     .sign(ENCODED_SECRET);
 };
 
-export const signRefreshToken = async (payload: TokenPayload) => {
-  return new SignJWT({ ...payload })
+export const signRefreshToken = async (
+  payload: TokenPayload
+): Promise<string> => {
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
     .sign(ENCODED_SECRET);
 };
 
-export const verifyAccessToken = async (
-  token: string
-): Promise<TokenPayload> => {
+export const verifyToken = async (token: string): Promise<TokenPayload> => {
   try {
     const { payload } = await jwtVerify(token, ENCODED_SECRET);
-    return payload as unknown as TokenPayload;
+    return payload as TokenPayload;
   } catch (error) {
-    throw new Error("Invalid Access Token");
-  }
-};
-
-export const verifyRefreshToken = async (
-  token: string
-): Promise<TokenPayload> => {
-  try {
-    const { payload } = await jwtVerify(token, ENCODED_SECRET);
-    return payload as unknown as TokenPayload;
-  } catch (error) {
-    throw new Error("Invalid Refresh Token");
+    throw new Error(error instanceof Error ? error.message : "Invalid Token");
   }
 };

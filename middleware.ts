@@ -1,57 +1,44 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { verifyAccessToken, verifyRefreshToken } from "./lib/auth";
+import { NextResponse, type NextRequest } from "next/server";
+import { verifyToken } from "./lib/auth";
 
 const PROTECTED_ROUTES = ["/dashboard", "/apply"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-
   const isProtectedRoute = PROTECTED_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
 
-  if (isProtectedRoute) {
-    // Check Authorization Header
-    const authHeader = req.headers.get("authorization");
-    let accessToken = authHeader?.split(" ")[1];
+  if (!isProtectedRoute) return NextResponse.next();
 
-    // Check Cookie if header missing
-    if (!accessToken) {
-      accessToken = req.cookies.get("accessToken")?.value;
-    }
+  const accessToken = req.cookies.get("accessToken")?.value;
+  const refreshToken = req.cookies.get("refreshToken")?.value;
 
-    if (accessToken) {
-      try {
-        await verifyAccessToken(accessToken);
-        return NextResponse.next();
-      } catch (err) {
-        // Access token invalid/expired, fall through to refresh token check
-      }
-    }
-
-    // Since we are validating in middleware, we need to be careful.
-    // Real validation happens with the refresh token cookie mainly for session presence.
-    const refreshToken = req.cookies.get("refreshToken")?.value;
-
-    if (!refreshToken) {
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
+  if (accessToken) {
     try {
-      await verifyRefreshToken(refreshToken);
-      // Valid session
-    } catch (err) {
-      // Invalid session
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
+      await verifyToken(accessToken);
+      return NextResponse.next();
+    } catch {
+      // Access token invalid, fall through to refresh logic
     }
   }
 
-  return NextResponse.next();
+  // If no access token but valid refresh token exists, redirect to refresh API
+  if (refreshToken) {
+    try {
+      await verifyToken(refreshToken);
+      // Create a rewrite/redirect to the internal refresh route
+      const refreshUrl = new URL("/api/auth/refresh", req.url);
+      refreshUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(refreshUrl);
+    } catch {
+      // Both tokens failed
+    }
+  }
+
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("from", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

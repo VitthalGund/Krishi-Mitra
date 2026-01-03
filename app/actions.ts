@@ -1,50 +1,60 @@
 "use server";
 
 import dbConnect from "@/lib/db";
-import LoanApplication from "@/models/LoanApplication";
+import LoanApplication, { ILoanApplication } from "@/models/LoanApplication";
 import { revalidatePath } from "next/cache";
-import { ZodError } from "zod";
-import {
-  LoanFormData,
-  KCCSchema,
-  TractorSchema,
-  DairySchema,
-} from "@/lib/schemas";
+import { LoanSchema, type LoanFormData } from "@/lib/schemas";
 import { cookies } from "next/headers";
-import { verifyAccessToken, verifyRefreshToken } from "@/lib/auth";
+import { verifyToken } from "@/lib/auth";
 import User from "@/models/User";
 
-export async function getUserProfile() {
-  await dbConnect();
-  const userId = await getUserId();
-  if (!userId) return null;
-  const user = await User.findById(userId).lean();
-  return user ? { name: user.name, mobile: user.mobileNumber } : null;
-}
-
-// Helper to get authenticated user (Mock/Token based)
-async function getUserId() {
-  // In a real app, verify token from headers/cookies here.
-  // We'll rely on the cookie created by login.
+/**
+ * Helper to retrieve the authenticated user's ID from the session cookie.
+ */
+async function getAuthenticatedUserId(): Promise<string | null> {
   const cookieStore = cookies();
   const refreshToken = cookieStore.get("refreshToken")?.value;
 
   if (!refreshToken) return null;
 
   try {
-    const payload = await verifyRefreshToken(refreshToken);
+    const payload = await verifyToken(refreshToken);
     return payload.userId;
-  } catch (e) {
+  } catch (error) {
     return null;
   }
 }
 
-// --- Action: Save as Draft ---
-// Requirements: Upsert, "Draft" Status, NO Validation
-export async function saveDraft(data: any) {
+/**
+ * Fetches the basic profile of the currently logged-in user.
+ */
+export async function getUserProfile(): Promise<{
+  name: string;
+  mobile: string;
+} | null> {
+  await dbConnect();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return null;
+
+  const user = await User.findById(userId).lean();
+  if (!user) return null;
+
+  return {
+    name: user.name,
+    mobile: user.mobileNumber,
+  };
+}
+
+/**
+ * Action: Save as Draft
+ * Requirements: Upsert data without strict validation to allow incremental progress.
+ */
+export async function saveDraft(
+  data: Partial<LoanFormData> & { loanType: string }
+) {
   try {
     await dbConnect();
-    const userId = await getUserId();
+    const userId = await getAuthenticatedUserId();
 
     if (!userId) {
       return { success: false, error: "Unauthorized" };
@@ -52,22 +62,9 @@ export async function saveDraft(data: any) {
 
     const { loanType, ...details } = data;
 
-    // We use a Flexible update. We don't validate 'details' against Zod here.
-    // Just ensure mandatory fields for DB (like mobile/userId) are present if it's a new doc.
-    const mobileNumber = details.mobile || details.mobileNumber;
-
-    if (!mobileNumber) {
-      return {
-        success: false,
-        error: "Mobile number is required to save a draft.",
-      };
-    }
-
-    // Ensure mobile is in details for querying
-    details.mobileNumber = mobileNumber;
-
+    // Use userId and type as a composite key to ensure only one draft exists per loan type.
     const application = await LoanApplication.findOneAndUpdate(
-      { userId, type: loanType }, // Find strictly by OWNER + TYPE
+      { userId, type: loanType, status: "Draft" },
       {
         $set: {
           userId,
@@ -80,42 +77,30 @@ export async function saveDraft(data: any) {
     );
 
     revalidatePath("/dashboard");
-    return { success: true, id: application._id.toString() };
-  } catch (error: any) {
-    console.error("Save Draft Error:", error);
-    return { success: false, error: error.message };
+    return { success: true, id: (application._id as string).toString() };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to save draft";
+    console.error("Save Draft Error:", message);
+    return { success: false, error: message };
   }
 }
 
-// --- Action: Submit Application ---
-// Requirements: Full Zod Validation, "Submitted" Status
-export async function submitApplication(data: any) {
+/**
+ * Action: Submit Application
+ * Requirements: Full Zod validation before moving status to "Submitted".
+ */
+export async function submitApplication(data: unknown) {
   try {
     await dbConnect();
-    const userId = await getUserId();
+    const userId = await getAuthenticatedUserId();
+
     if (!userId) {
       return { success: false, error: "Unauthorized" };
     }
 
-    // 1. Validate based on Loan Type
-    const loanType = data.loanType;
-    let schema;
-
-    switch (loanType) {
-      case "KCC":
-        schema = KCCSchema;
-        break;
-      case "Mechanization":
-        schema = TractorSchema;
-        break;
-      case "Dairy":
-        schema = DairySchema;
-        break;
-      default:
-        return { success: false, error: "Invalid Loan Type" };
-    }
-
-    const parsed = schema.safeParse(data);
+    // Strict validation using the discriminated union schema
+    const parsed = LoanSchema.safeParse(data);
 
     if (!parsed.success) {
       const errorMessage =
@@ -125,50 +110,43 @@ export async function submitApplication(data: any) {
 
     const validData = parsed.data;
 
-    // Ensure mobile is in details
-    const details = { ...validData } as any;
-    // @ts-ignore
-    const mobileNumber = validData.mobile;
-    details.mobileNumber = mobileNumber;
-
-    // 2. Persist to DB
     const application = await LoanApplication.findOneAndUpdate(
-      { userId, type: loanType },
+      { userId, type: validData.loanType },
       {
         $set: {
           userId,
-          type: loanType,
+          type: validData.loanType,
           status: "Submitted",
-          details: details,
-          aiAnalysis: {
-            riskScore: 0, // Placeholder
-            summary: "Submitted via Portal",
-            recommendedAction: "Pending Review",
-          },
+          details: validData,
+          aiAnalysis: "Submitted via Krishi-Mitra AI Portal",
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
     revalidatePath("/dashboard");
-    return { success: true, id: application._id.toString() };
-  } catch (error: any) {
-    console.error("Submit Error:", error);
-    return { success: false, error: error.message };
+    return { success: true, id: (application._id as string).toString() };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Submission failed";
+    console.error("Submit Error:", message);
+    return { success: false, error: message };
   }
 }
 
-export async function getApplications() {
+/**
+ * Retrieves all loan applications associated with the current user.
+ */
+export async function getApplications(): Promise<ILoanApplication[]> {
   await dbConnect();
-  const userId = await getUserId();
+  const userId = await getAuthenticatedUserId();
+
   if (!userId) return [];
 
-  // Convert _id to string to avoid serialization warnings
   const apps = await LoanApplication.find({ userId })
     .sort({ updatedAt: -1 })
     .lean();
-  return apps.map((app: any) => ({
-    ...app,
-    _id: app._id.toString(),
-  }));
+
+  // Ensuring the array is typed correctly as the model interface
+  return apps as unknown as ILoanApplication[];
 }

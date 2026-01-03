@@ -1,9 +1,7 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, convertToCoreMessages, tool } from "ai";
+import { streamText, tool, type CoreMessage } from "ai";
 import { z } from "zod";
-
-// export const runtime = "edge"; // Use Node.js runtime for stability
 
 // --- Dual Engine Configuration ---
 const googleProvider = createGoogleGenerativeAI({
@@ -24,58 +22,35 @@ const SYSTEM_PROMPT = `You are Krishi-Sahayak, an expert agri-loan assistant.
 6. Analyzed images/documents will be provided as context; use them to fill fields like Survey Number or Name.`;
 
 export async function POST(req: Request) {
-  let messages;
-  try {
-    const body = await req.json();
-    messages = body.messages;
-    console.log("Chat API hit. Messages length:", messages?.length);
-    console.log("Provider: google (default)");
-    if (!process.env.GOOGLE_API_KEY) {
-      console.error("CRITICAL: GOOGLE_API_KEY is missing in process.env");
-    }
-  } catch (err) {
-    console.error("JSON Parse Error:", err);
-    return new Response("Invalid JSON", { status: 400 });
-  }
+  const { messages }: { messages: CoreMessage[] } = await req.json();
+  const provider = process.env.LLM_PROVIDER || "google";
 
-  const provider = process.env.LLM_PROVIDER || "google"; // Default to Google (Gemini)
-
-  // Select Model Engine
-  let model;
-  if (provider === "ollama") {
-    model = ollamaProvider(process.env.OLLAMA_MODEL || "llama3");
-  } else {
-    model = googleProvider("gemini-1.5-flash");
-  }
+  const model =
+    provider === "ollama"
+      ? ollamaProvider(process.env.OLLAMA_MODEL || "llama3")
+      : googleProvider("gemini-1.5-flash");
 
   try {
     const result = await streamText({
       model,
-      messages: messages as any, // Bypass strict type check, assume compatible structure
+      messages,
       system: SYSTEM_PROMPT,
       tools: {
         update_form: tool({
           description:
             "Updates the loan application form fields with extracted data.",
           parameters: z.object({
-            // Common
             farmerName: z.string().optional(),
             mobile: z.string().optional(),
             village: z.string().optional(),
             loanType: z.enum(["KCC", "Mechanization", "Dairy"]).optional(),
-
-            // KCC
             surveyNo: z.string().optional(),
             crop: z.string().optional(),
             acreage: z.string().optional(),
             cropSeason: z.string().optional(),
-
-            // Tractor
             equipment: z.string().optional(),
             dealer: z.string().optional(),
             price: z.string().optional(),
-
-            // Dairy
             animalType: z.string().optional(),
             animalCount: z.string().optional(),
             shedArea: z.string().optional(),
@@ -89,13 +64,9 @@ export async function POST(req: Request) {
       },
     });
 
-    // Fallback to text stream if data stream is causing issues (or check newer API)
-    // @ts-ignore
-    return result.toTextStreamResponse();
-  } catch (error: any) {
-    console.error("AI Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-    });
+    return result.toDataStreamResponse();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "AI Error";
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }
