@@ -2,8 +2,11 @@ import { getApplications } from "@/app/actions";
 import Link from "next/link";
 import { Plus, FileText, CheckCircle, Clock, AlertCircle } from "lucide-react";
 
+import { getUserProfile } from "@/app/actions";
+
 export default async function DashboardPage() {
   const applications = await getApplications();
+  const user = await getUserProfile();
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -11,7 +14,7 @@ export default async function DashboardPage() {
         <header className="flex justify-between items-center mb-10">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
-              Your Applications
+              Welcome, {user?.name || "Farmer"}!
             </h1>
             <p className="text-slate-500 mt-1">
               Track the status of your loan requests.

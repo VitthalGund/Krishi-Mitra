@@ -12,6 +12,15 @@ import {
 } from "@/lib/schemas";
 import { cookies } from "next/headers";
 import { verifyAccessToken, verifyRefreshToken } from "@/lib/auth";
+import User from "@/models/User";
+
+export async function getUserProfile() {
+  await dbConnect();
+  const userId = await getUserId();
+  if (!userId) return null;
+  const user = await User.findById(userId).lean();
+  return user ? { name: user.name, mobile: user.mobileNumber } : null;
+}
 
 // Helper to get authenticated user (Mock/Token based)
 async function getUserId() {

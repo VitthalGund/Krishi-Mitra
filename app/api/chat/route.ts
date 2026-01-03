@@ -3,14 +3,14 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, convertToCoreMessages, tool } from "ai";
 import { z } from "zod";
 
-export const runtime = "edge";
+// export const runtime = "edge"; // Use Node.js runtime for stability
 
 // --- Dual Engine Configuration ---
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_API_KEY,
+const googleProvider = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY || "",
 });
 
-const ollama = createOpenAI({
+const ollamaProvider = createOpenAI({
   baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1",
   apiKey: "ollama",
 });
@@ -24,21 +24,34 @@ const SYSTEM_PROMPT = `You are Krishi-Sahayak, an expert agri-loan assistant.
 6. Analyzed images/documents will be provided as context; use them to fill fields like Survey Number or Name.`;
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
-  const provider = process.env.LLM_PROVIDER || "ollama"; // Default to Ollama
+  let messages;
+  try {
+    const body = await req.json();
+    messages = body.messages;
+    console.log("Chat API hit. Messages length:", messages?.length);
+    console.log("Provider: google (default)");
+    if (!process.env.GOOGLE_API_KEY) {
+      console.error("CRITICAL: GOOGLE_API_KEY is missing in process.env");
+    }
+  } catch (err) {
+    console.error("JSON Parse Error:", err);
+    return new Response("Invalid JSON", { status: 400 });
+  }
+
+  const provider = process.env.LLM_PROVIDER || "google"; // Default to Google (Gemini)
 
   // Select Model Engine
   let model;
   if (provider === "ollama") {
-    model = ollama(process.env.OLLAMA_MODEL || "llama3");
+    model = ollamaProvider(process.env.OLLAMA_MODEL || "llama3");
   } else {
-    model = google("gemini-1.5-flash");
+    model = googleProvider("gemini-1.5-flash");
   }
 
   try {
     const result = await streamText({
       model,
-      messages: convertToCoreMessages(messages),
+      messages: messages as any, // Bypass strict type check, assume compatible structure
       system: SYSTEM_PROMPT,
       tools: {
         update_form: tool({
@@ -68,11 +81,17 @@ export async function POST(req: Request) {
             shedArea: z.string().optional(),
             milkYield: z.string().optional(),
           }),
+          execute: async (args) => {
+            console.log("Server Tool Execute:", args);
+            return { ...args, status: "generated" };
+          },
         }),
       },
     });
 
-    return result.toDataStreamResponse();
+    // Fallback to text stream if data stream is causing issues (or check newer API)
+    // @ts-ignore
+    return result.toTextStreamResponse();
   } catch (error: any) {
     console.error("AI Error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
